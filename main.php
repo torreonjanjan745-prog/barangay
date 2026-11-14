@@ -151,7 +151,7 @@
 
                     <a href="#residentLogin" data-login-open
                        class="bg-green900 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-green800 transition shadow-sm">
-                        👤 Resident Login
+                        👤 CREATE ACCOUNT
                     </a>
 
                 </div>
@@ -200,16 +200,19 @@
                     <!-- RESIDENT LOGIN -->
 
                     <a href="#residentLogin" data-login-open
-                       id="logIn" class="px-4 py-3 bg-green900 text-white rounded-lg text-center font-semibold mt-2">
-                        👤 Resident Login
+                       class="px-4 py-3 bg-green900 text-white rounded-lg text-center font-semibold mt-2">
+                        👤 CREATE ACCOUNT
                     </a>
 
                 </div>
+
             </div>
 
         </div>
 
     </nav>
+
+
     <!-- ==========================================
          HERO SECTION WITH IMAGE SLIDESHOW
     =========================================== -->
@@ -1363,70 +1366,213 @@
 
 
     <!-- ==========================================
-         RESIDENT LOGIN MODAL
+         RESIDENT REGISTRATION MODAL
     =========================================== -->
 
-    <div id="residentLogin" class="hidden fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="residentLoginTitle">
-        <div class="relative w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl">
-            <button type="button" id="closeLogin" class="absolute right-4 top-3 text-3xl leading-none text-gray-400 hover:text-gray-700" aria-label="Close login form">&times;</button>
+<div id="residentLogin" class="hidden fixed inset-0 z-[100] bg-black/50 items-center justify-center p-4 transform-gpu will-change-transform" role="dialog" aria-modal="true" aria-labelledby="residentLoginTitle">
+        <div class="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-7 shadow-2xl">
+
+            <!-- CLOSE BUTTON -->
+
+            <button
+                type="button"
+                id="closeLogin"
+                class="absolute right-4 top-3 text-3xl leading-none text-gray-400 hover:text-gray-700"
+                aria-label="Close registration form"
+            >
+                &times;
+            </button>
+
+            <!-- FORM HEADER -->
 
             <div class="mb-6 text-center">
-                <img src="asset/logo.jpg" alt="Barangay Guindacpan Logo" class="mx-auto mb-3 h-16 w-16 rounded-full border-2 border-gold object-cover">
-                <h2 id="residentLoginTitle" class="text-2xl font-extrabold text-green900">Resident Login</h2>
-                <p class="mt-2 text-sm text-gray-500">Sign in to access your resident account.</p>
+
+                <img
+                    src="asset/logo.jpg"
+                    alt="Barangay Guindacpan Logo"
+                    class="mx-auto mb-3 h-16 w-16 rounded-full border-2 border-gold object-cover"
+                >
+
+                <h2
+                    id="residentLoginTitle"
+                    class="text-xl md:text-2xl font-extrabold text-green900"
+                >
+                    CREATE BARANGAY ACCOUNT
+                </h2>
+
+                <p class="mt-2 text-sm text-gray-500">
+                    Register your resident account to access barangay services.
+                </p>
+
             </div>
 
-            <form action="LogIn.php" method="post" class="space-y-4">
+
+            <!-- RESIDENT REGISTRATION FORM -->
+
+            <form action="LogIn.php" method="POST" class="space-y-4">
+
+                <!-- FULL NAME -->
+
                 <div>
-                    <label for="residentUsername" class="mb-1 block text-sm font-semibold text-gray-700">Username</label>
-                    <input id="residentUsername" name="username" type="text" autocomplete="username" required placeholder="Enter your username" class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green700 focus:ring-2 focus:ring-green700/20">
+
+                    <label
+                        for="residentFullName"
+                        class="mb-1 block text-sm font-semibold text-gray-700"
+                    >
+                        Full Name:
+                    </label>
+
+                    <input
+                        id="residentFullName"
+                        name="fullName"
+                        type="text"
+                        autocomplete="name"
+                        required
+                        placeholder="Enter your Full Name"
+                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
+                    >
+
                 </div>
+
+
+                <!-- USERNAME -->
+
                 <div>
-                    <label for="residentPassword" class="mb-1 block text-sm font-semibold text-gray-700">Password</label>
-                    <input id="residentPassword" name="password" type="password" autocomplete="current-password" required placeholder="Enter your password" class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green700 focus:ring-2 focus:ring-green700/20">
+
+                    <label
+                        for="residentUsername"
+                        class="mb-1 block text-sm font-semibold text-gray-700"
+                    >
+                        Username:
+                    </label>
+
+                    <input
+                        id="residentUsername"
+                        name="username"
+                        type="text"
+                        autocomplete="username"
+                        required
+                        placeholder="Enter your Username"
+                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
+                    >
+
                 </div>
-                <button type="submit" class="w-full rounded-xl bg-green900 py-3 font-bold text-white transition hover:bg-green800">Log In</button>
+
+
+                <!-- PUROK / ADDRESS -->
+
+                <div>
+
+                    <label
+                        for="residentAdd"
+                        class="mb-1 block text-sm font-semibold text-gray-700"
+                    >
+                        Purok / Address:
+                    </label>
+
+                    <input
+                        id="residentAdd"
+                        name="purok"
+                        type="text"
+                        autocomplete="street-address"
+                        required
+                        placeholder="Enter your Purok / Address"
+                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
+                    >
+
+                </div>
+
+
+                <!-- BIRTHDAY -->
+
+                <div>
+
+                    <label
+                        for="residentBirth"
+                        class="mb-1 block text-sm font-semibold text-gray-700"
+                    >
+                        Birthday:
+                    </label>
+
+                    <input
+                        id="residentBirth"
+                        name="birthday"
+                        type="date"
+                        autocomplete="bday"
+                        required
+                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
+                    >
+
+                </div>
+
+
+                <!-- PASSWORD -->
+
+                <div>
+
+                    <label
+                        for="residentPassword"
+                        class="mb-1 block text-sm font-semibold text-gray-700"
+                    >
+                        Password:
+                    </label>
+
+                    <input
+                        id="residentPassword"
+                        name="password"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="8"
+                        required
+                        placeholder="Enter your Password"
+                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
+                    >
+
+                     <label for="residentConfirm" class="mt-5 mb-1 block text-sm font-semibold text-gray-700">
+                        Confirm Password
+                     </label>
+                     <input
+                        id="residentConfirm"
+                        name="password"
+                        type="password"
+                        autocomplete="new-password"
+                        minlength="8"
+                        required
+                        placeholder="Confirm Your Password"
+                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
+                    >
+
+
+                    <p class="text-xs text-gray-400 mt-1">
+                        Password must contain at least 8 characters.
+                    </p>
+
+                </div>
+
+
+                <!-- CREATE ACCOUNT BUTTON -->
+
+                <button
+                    type="submit"
+                    name="register"
+                    class="w-full rounded-xl bg-green-900 py-3 font-bold text-white transition hover:bg-green-800"
+                >
+                    CREATE ACCOUNT
+                </button>
+
             </form>
 
-            <p class="mt-5 text-center text-xs text-gray-400">If you do not have an account, please contact the barangay office.</p>
+
+            <!-- FORM FOOTER -->
+
+            <p class="mt-5 text-center text-xs text-gray-400">
+                If you need assistance with registration, please contact the barangay office.
+            </p>
+
         </div>
+
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const loginModal = document.getElementById('residentLogin');
-            const closeLoginButton = document.getElementById('closeLogin');
-            const loginLinks = document.querySelectorAll('[data-login-open]');
-            const usernameInput = document.getElementById('residentUsername');
-
-            function openLoginModal(event) {
-                if (event) event.preventDefault();
-                loginModal.classList.remove('hidden');
-                loginModal.classList.add('flex');
-                document.body.classList.add('overflow-hidden');
-                if (usernameInput) usernameInput.focus();
-            }
-
-            function closeLoginModal() {
-                loginModal.classList.add('hidden');
-                loginModal.classList.remove('flex');
-                document.body.classList.remove('overflow-hidden');
-            }
-
-            loginLinks.forEach(function (link) {
-                link.addEventListener('click', openLoginModal);
-            });
-            closeLoginButton.addEventListener('click', closeLoginModal);
-            loginModal.addEventListener('click', function (event) {
-                if (event.target === loginModal) closeLoginModal();
-            });
-            document.addEventListener('keydown', function (event) {
-                if (event.key === 'Escape' && !loginModal.classList.contains('hidden')) {
-                    closeLoginModal();
-                }
-            });
-        });
-    </script>
 
     <!-- ==========================================
          JAVASCRIPT

@@ -1,4 +1,36 @@
+document.addEventListener('DOMContentLoaded', function () {
+   const loginModal = document.getElementById('residentLogin');
+   const closeLoginButton = document.getElementById('closeLogin');
+   const loginLinks = document.querySelectorAll('[data-login-open]');
+   const usernameInput = document.getElementById('residentUsername');
 
+   function openLoginModal(event) {
+       if (event) event.preventDefault();
+       loginModal.classList.remove('hidden');
+       loginModal.classList.add('flex');
+       document.body.classList.add('overflow-hidden');
+       if (usernameInput) usernameInput.focus();
+   }
+
+   function closeLoginModal() {
+       loginModal.classList.add('hidden');
+       loginModal.classList.remove('flex');
+       document.body.classList.remove('overflow-hidden');
+   }
+
+   loginLinks.forEach(function (link) {
+       link.addEventListener('click', openLoginModal);
+   });
+   closeLoginButton.addEventListener('click', closeLoginModal);
+   loginModal.addEventListener('click', function (event) {
+       if (event.target === loginModal) closeLoginModal();
+   });
+   document.addEventListener('keydown', function (event) {
+       if (event.key === 'Escape' && !loginModal.classList.contains('hidden')) {
+           closeLoginModal();
+       }
+   });
+});
 
 // MOBILE NAVIGATION
 
@@ -41,8 +73,9 @@ mobileLinks.forEach(function (link) {
 
 const images = [
    "asset/bg.jpg",
-   "asset/metting.jpg",
-   "asset/guindacpan.jpg",
+   "asset/seasion.jpg",
+   "asset/seasion1.jpg",
+    "asset/work.jpg",
    "asset/gu.jpg"
 ];
 
