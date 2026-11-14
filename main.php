@@ -1409,7 +1409,7 @@
 
             <!-- RESIDENT REGISTRATION FORM -->
 
-            <form action="LogIn.php" method="POST" class="space-y-4">
+            <form action="LogIn.php" method="post" class="space-y-4">
 
                 <!-- FULL NAME -->
 
@@ -1472,7 +1472,7 @@
 
                     <input
                         id="residentAdd"
-                        name="purok"
+                        name="address"
                         type="text"
                         autocomplete="street-address"
                         required
@@ -1533,7 +1533,7 @@
                      </label>
                      <input
                         id="residentConfirm"
-                        name="password"
+                        name="confirm"
                         type="password"
                         autocomplete="new-password"
                         minlength="8"
