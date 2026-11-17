@@ -130,12 +130,12 @@
 
                 <div class="hidden md:flex items-center gap-7">
 
-                    <a href="main.php"
+                    <a href="resident/logIn.php"
                        class="text-green900 font-bold border-b-2 border-gold pb-1">
                         Home
                     </a>
 
-                    <a href="services.php"
+                    <a href="resident/dashboard.php"
                        class="text-gray-600 hover:text-green900 transition font-medium">
                         Services
                     </a>
