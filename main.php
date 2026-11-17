@@ -658,7 +658,7 @@
                     </span>
 
                     <h3 class="text-3xl font-extrabold text-green900 mt-4">
-                        Hon. Pedro M. Dela Cruz
+                        Hon. PROCESSO P. CAJES
                     </h3>
 
                     <p class="text-sm text-gold font-semibold mt-2">
@@ -674,7 +674,7 @@
                         </p>
 
                         <p>
-                            📞 +63 917 555 1289
+                            📞 093224166931
                         </p>
 
                         <p class="break-all">
