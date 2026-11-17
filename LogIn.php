@@ -1,237 +1,143 @@
 
 <?php
-require_once "db.php";
-// =====================================
+
+// =============================================
 // DATABASE CONNECTION
-// =====================================
+// =============================================
 
-include 'db.php';
+include "db.php";
 
-$errors = [];
 $message = "";
 
-$old = [
-    'full_name' => '',
-    'username' => '',
-    'address' => '',
-    'birthday' => ''
-];
+
+// =============================================
+// RESIDENT REGISTRATION
+// =============================================
+
+if (isset($_POST['register'])) {
+
+    // =========================================
+    // GET FORM DATA
+    // =========================================
+
+    $fullName = trim($_POST['fullName'] ?? '');
+    $username = trim($_POST['username'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $birthday = $_POST['birthday'] ?? '';
+    $password = $_POST['password'] ?? '';
 
 
-// =====================================
-// CHECK REGISTRATION SUBMISSION
-// =====================================
+    // =========================================
+    // VALIDATE FORM INPUTS
+    // =========================================
 
-if (isset($_SERVER['request']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (
+        empty($fullName) ||
+        empty($username) ||
+        empty($address) ||
+        empty($birthday) ||
+        empty($password)
+    ) {
 
-    // Your login or registration processing code goes here
-
-
-
-    // =====================================
-    // 1. FILTER INPUTS
-    // =====================================
-
-    $full_name = trim(strip_tags($_POST['full_name'] ?? ''));
-    $username  = trim(strip_tags($_POST['username'] ?? ''));
-    $address   = trim(strip_tags($_POST['address'] ?? ''));
-    $birthday  = trim($_POST['birthday'] ?? '');
-    $password  = $_POST['password'] ?? '';
-    $confirm   = $_POST['confirm_password'] ?? '';
-
-    $old = [
-        'full_name' => $full_name,
-        'username' => $username,
-        'address' => $address,
-        'birthday' => $birthday
-    ];
-
-
-    // =====================================
-    // 2. VALIDATE FULL NAME
-    // =====================================
-
-    if (empty($full_name)) {
-
-        $errors[] = "Full Name is required!";
-
-    } elseif (strlen($full_name) < 3) {
-
-        $errors[] = "Full Name must be at least 3 characters!";
-
-    } elseif (!preg_match("/^[a-zA-ZÑñ .'-]+$/", $full_name)) {
-
-        $errors[] = "Full Name must contain letters only!";
-
-    }
-
-
-    // =====================================
-    // 3. VALIDATE USERNAME
-    // =====================================
-
-    if (empty($username)) {
-
-        $errors[] = "Username is required!";
-
-    } elseif (strlen($username) < 4 || strlen($username) > 20) {
-
-        $errors[] = "Username must be 4-20 characters!";
-
-    } elseif (!preg_match("/^[a-zA-Z0-9_]+$/", $username)) {
-
-        $errors[] = "Username cannot contain spaces or special characters!";
-
-    }
-
-
-    // =====================================
-    // 4. VALIDATE ADDRESS
-    // =====================================
-
-    if (empty($address)) {
-
-        $errors[] = "Purok / Address is required!";
-
-    } elseif (strlen($address) < 3) {
-
-        $errors[] = "Address must be at least 3 characters!";
-
-    }
-
-
-    // =====================================
-    // 5. VALIDATE BIRTHDAY
-    // =====================================
-
-    if (empty($birthday)) {
-
-        $errors[] = "Birthday is required!";
+        $message = "Please complete all fields.";
 
     } else {
 
-        $date = DateTime::createFromFormat('!Y-m-d', $birthday);
+        // =====================================
+        // CHECK EXISTING USERNAME
+        // =====================================
 
-        if (!$date || $date->format('Y-m-d') !== $birthday) {
+        $check = mysqli_prepare(
+            $conn,
+            "SELECT id FROM residents WHERE username = ?"
+        );
 
-            $errors[] = "Invalid birthday format!";
-
-        } elseif ($birthday > date('Y-m-d')) {
-
-            $errors[] = "Birthday cannot be in the future!";
-
+        if (!$check) {
+            die("Database Error: " . mysqli_error($conn));
         }
 
-    }
+        mysqli_stmt_bind_param($check, "s", $username);
+
+        mysqli_stmt_execute($check);
+
+        $check_result = mysqli_stmt_get_result($check);
 
 
-    // =====================================
-    // 6. VALIDATE PASSWORD
-    // =====================================
+        // =====================================
+        // IF USERNAME ALREADY EXISTS
+        // =====================================
 
-    if (empty($password)) {
+        if (mysqli_num_rows($check_result) > 0) {
 
-        $errors[] = "Password is required!";
+            $message = "Username already exists! Please use another.";
 
-    } elseif (strlen($password) < 8) {
+        } else {
 
-        $errors[] = "Password must be at least 8 characters!";
+            // =================================
+            // HASH PASSWORD
+            // =================================
 
-    } elseif (
-        !preg_match("/[A-Za-z]/", $password) ||
-        !preg_match("/[0-9]/", $password)
-    ) {
-
-        $errors[] = "Password must contain letters and numbers!";
-
-    }
+            $hashedPassword = password_hash(
+                $password,
+                PASSWORD_DEFAULT
+            );
 
 
-    // =====================================
-    // 7. CONFIRM PASSWORD
-    // =====================================
+            // =================================
+            // INSERT RESIDENT ACCOUNT
+            // =================================
 
-    if ($password !== $confirm) {
+            $stmt = mysqli_prepare(
+                $conn,
+                "INSERT INTO residents
+                (full_name, username, purok_address, birthday, password)
+                VALUES (?, ?, ?, ?, ?)"
+            );
 
-        $errors[] = "Passwords do not match!";
+            if (!$stmt) {
+                die("Database Error: " . mysqli_error($conn));
+            }
 
-    }
+            mysqli_stmt_bind_param(
+                $stmt,
+                "sssss",
+                $fullName,
+                $username,
+                $address,
+                $birthday,
+                $hashedPassword
+            );
 
 
-    // =====================================
-    // 8. CHECK USERNAME + INSERT ACCOUNT
-    // =====================================
+            // =================================
+            // EXECUTE REGISTRATION
+            // =================================
 
-    if (empty($errors)) {
+            if (mysqli_stmt_execute($stmt)) {
 
-        try {
-
-            // Check existing username
-            $check = $pdo->prepare("
-                SELECT id
-                FROM residents
-                WHERE username = ?
-            ");
-
-            $check->execute([$username]);
-
-            if ($check->fetch()) {
-
-                $errors[] = "Username already exists!";
+                $message = "Registration successful! Your account is pending approval.";
 
             } else {
 
-                // Hash password securely
-                $hashed_password = password_hash(
-                    $password,
-                    PASSWORD_DEFAULT
-                );
-
-                // Insert resident into MySQL
-                $insert = $pdo->prepare("
-                    INSERT INTO residents
-                    (
-                        full_name,
-                        username,
-                        purok_address,
-                        birthday,
-                        password,
-                        status
-                    )
-                    VALUES (?, ?, ?, ?, ?, 'pending')
-                ");
-
-                $insert->execute([
-                    $full_name,
-                    $username,
-                    $address,
-                    $birthday,
-                    $hashed_password
-                ]);
-
-                // Registration successful
-                $message = "Account created successfully! Your account is pending approval.";
-
-                // Clear old inputs
-                $old = [
-                    'full_name' => '',
-                    'username' => '',
-                    'address' => '',
-                    'birthday' => ''
-                ];
-
+                $message = "Registration failed: " .
+                           mysqli_stmt_error($stmt);
             }
 
-        } catch (PDOException $e) {
 
-            error_log($e->getMessage());
+            // =================================
+            // CLOSE INSERT STATEMENT
+            // =================================
 
-            $errors[] = "Database Error: Unable to create your account. Please try again.";
-
+            mysqli_stmt_close($stmt);
         }
 
-    }
 
+        // =====================================
+        // CLOSE CHECK STATEMENT
+        // =====================================
+
+        mysqli_stmt_close($check);
+    }
 }
 
 ?>
