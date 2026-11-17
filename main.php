@@ -140,7 +140,7 @@
                         Services
                     </a>
 
-                    <a href="officials.php"
+                    <a href=""
                        class="text-gray-600 hover:text-green900 transition font-medium">
                         Officials
                     </a>
@@ -1355,6 +1355,9 @@
                     <a href="terms.php" class="hover:text-gold2 transition">
                         Terms of Service
                     </a>
+                    <a href="admin/dashboards.php" class="hover:text-gold2 transition">
+                      Admin Portal
+    </a>
 
                 </div>
 
@@ -1479,6 +1482,10 @@
             </p>
 
         </div>
+
+
+</div>
+
     </div>
 
     <!-- EXTERNAL JAVASCRIPT -->

@@ -173,16 +173,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     </div>
 
-    <script>
-        const loginForm = document.getElementById("loginForm");
-        const loginButton = document.getElementById("loginButton");
-
-        loginForm.addEventListener("submit", function () {
-            loginButton.disabled = true;
-            loginButton.textContent = "CHECKING...";
-            loginButton.classList.add("opacity-60", "cursor-not-allowed");
-        });
-    </script>
-
 </body>
+ <script src="logIn.js"></script>
 </html>
