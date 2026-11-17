@@ -11,6 +11,9 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
     <!-- Tailwind Configuration -->
     <script>
         tailwind.config = {
@@ -132,7 +135,7 @@
                         Home
                     </a>
 
-                    <a href"Servcices"
+                    <a href="services.php"
                        class="text-gray-600 hover:text-green900 transition font-medium">
                         Services
                     </a>
@@ -151,7 +154,7 @@
 
                     <a href="#residentLogin" data-login-open
                        class="bg-green900 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-green800 transition shadow-sm">
-                        👤 CREATE ACCOUNT
+                        👤CREATE ACCOUNT
                     </a>
 
                 </div>
@@ -200,19 +203,16 @@
                     <!-- RESIDENT LOGIN -->
 
                     <a href="#residentLogin" data-login-open
-                       class="px-4 py-3 bg-green900 text-white rounded-lg text-center font-semibold mt-2">
+                       id="logIn" class="px-4 py-3 bg-green900 text-white rounded-lg text-center font-semibold mt-2">
                         👤 CREATE ACCOUNT
                     </a>
 
                 </div>
-
             </div>
 
         </div>
 
     </nav>
-
-
     <!-- ==========================================
          HERO SECTION WITH IMAGE SLIDESHOW
     =========================================== -->
@@ -658,7 +658,7 @@
                     </span>
 
                     <h3 class="text-3xl font-extrabold text-green900 mt-4">
-                        Hon. PROCESSO P. CAJES
+                        Hon. Pedro M. Dela Cruz
                     </h3>
 
                     <p class="text-sm text-gold font-semibold mt-2">
@@ -674,7 +674,7 @@
                         </p>
 
                         <p>
-                            📞 093224166931
+                            📞 +63 917 555 1289
                         </p>
 
                         <p class="break-all">
@@ -1366,14 +1366,19 @@
 
 
     <!-- ==========================================
-         RESIDENT REGISTRATION MODAL
+         RESIDENT CREATE ACCOUNT MODAL
     =========================================== -->
 
-<div id="residentLogin" class="hidden fixed inset-0 z-[100] bg-black/50 items-center justify-center p-4 transform-gpu will-change-transform" role="dialog" aria-modal="true" aria-labelledby="residentLoginTitle">
-        <div class="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-7 shadow-2xl">
+    <div
+        id="residentLogin"
+        class="hidden fixed inset-0 z-[100] bg-black/60 items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="residentLoginTitle"
+    >
+    <div class="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-7 shadow-2xl">
 
             <!-- CLOSE BUTTON -->
-
             <button
                 type="button"
                 id="closeLogin"
@@ -1384,9 +1389,7 @@
             </button>
 
             <!-- FORM HEADER -->
-
             <div class="mb-6 text-center">
-
                 <img
                     src="asset/logo.jpg"
                     alt="Barangay Guindacpan Logo"
@@ -1395,189 +1398,90 @@
 
                 <h2
                     id="residentLoginTitle"
-                    class="text-xl md:text-2xl font-extrabold text-green900"
+                    class="text-2xl font-extrabold text-green900 whitespace-nowrap"
                 >
                     CREATE BARANGAY ACCOUNT
                 </h2>
 
                 <p class="mt-2 text-sm text-gray-500">
-                    Register your resident account to access barangay services.
+                    Register your account to access resident services.
                 </p>
-
             </div>
 
-
-            <!-- RESIDENT REGISTRATION FORM -->
-
-            <form action="LogIn.php" method="post" class="space-y-4">
+            <!-- REGISTRATION FORM -->
+            <!-- Register.php must validate and save the account securely. -->
+            <form action="LogIn.php" method="POST" class="space-y-4">
 
                 <!-- FULL NAME -->
-
                 <div>
-
-                    <label
-                        for="residentFullName"
-                        class="mb-1 block text-sm font-semibold text-gray-700"
-                    >
-                        Full Name:
-                    </label>
-
-                    <input
-                        id="residentFullName"
-                        name="fullName"
-                        type="text"
-                        autocomplete="name"
-                        required
-                        placeholder="Enter your Full Name"
-                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
-                    >
-
+                    <label for="residentFullName" class="mb-1 block text-sm font-semibold text-gray-700">Full Name:</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        <input id="residentFullName" name="fullName" type="text" autocomplete="name" required placeholder="Enter your full name" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
+                    </div>
                 </div>
-
 
                 <!-- USERNAME -->
-
                 <div>
-
-                    <label
-                        for="residentUsername"
-                        class="mb-1 block text-sm font-semibold text-gray-700"
-                    >
-                        Username:
-                    </label>
-
-                    <input
-                        id="residentUsername"
-                        name="username"
-                        type="text"
-                        autocomplete="username"
-                        required
-                        placeholder="Enter your Username"
-                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
-                    >
-
+                    <label for="residentUsername" class="mb-1 block text-sm font-semibold text-gray-700">Username:</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-at absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        <input id="residentUsername" name="username" type="text" autocomplete="username" required placeholder="Enter your username" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
+                    </div>
                 </div>
 
-
-                <!-- PUROK / ADDRESS -->
-
+                <!-- ADDRESS -->
                 <div>
-
-                    <label
-                        for="residentAdd"
-                        class="mb-1 block text-sm font-semibold text-gray-700"
-                    >
-                        Purok / Address:
-                    </label>
-
-                    <input
-                        id="residentAdd"
-                        name="address"
-                        type="text"
-                        autocomplete="street-address"
-                        required
-                        placeholder="Enter your Purok / Address"
-                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
-                    >
-
+                    <label for="residentAddress" class="mb-1 block text-sm font-semibold text-gray-700">Purok / Address:</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-location-dot absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        <input id="residentAddress" name="address" type="text" required placeholder="Enter your purok / address" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
+                    </div>
                 </div>
-
 
                 <!-- BIRTHDAY -->
-
                 <div>
-
-                    <label
-                        for="residentBirth"
-                        class="mb-1 block text-sm font-semibold text-gray-700"
-                    >
-                        Birthday:
-                    </label>
-
-                    <input
-                        id="residentBirth"
-                        name="birthday"
-                        type="date"
-                        autocomplete="bday"
-                        required
-                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
-                    >
-
+                    <label for="residentBirth" class="mb-1 block text-sm font-semibold text-gray-700">Birthday:</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-calendar-days absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        <input id="residentBirth" name="birthday" type="date" required class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
+                    </div>
                 </div>
-
 
                 <!-- PASSWORD -->
-
                 <div>
-
-                    <label
-                        for="residentPassword"
-                        class="mb-1 block text-sm font-semibold text-gray-700"
-                    >
-                        Password:
-                    </label>
-
-                    <input
-                        id="residentPassword"
-                        name="password"
-                        type="password"
-                        autocomplete="new-password"
-                        minlength="8"
-                        required
-                        placeholder="Enter your Password"
-                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
-                    >
-
-                     <label for="residentConfirm" class="mt-5 mb-1 block text-sm font-semibold text-gray-700">
-                        Confirm Password
-                     </label>
-                     <input
-                        id="residentConfirm"
-                        name="confirm"
-                        type="password"
-                        autocomplete="new-password"
-                        minlength="8"
-                        required
-                        placeholder="Confirm Your Password"
-                        class="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20"
-                    >
-
-
-                    <p class="text-xs text-gray-400 mt-1">
-                        Password must contain at least 8 characters.
-                    </p>
-
+                    <label for="residentPassword" class="mb-1 block text-sm font-semibold text-gray-700">Password:</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        <input id="residentPassword" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="Create your password" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
+                    </div>
                 </div>
 
+                <!-- CONFIRM PASSWORD -->
+                <div>
+                    <label for="residentConfirm" class="mb-1 block text-sm font-semibold text-gray-700">Confirm Password:</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-shield-halved absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                        <input id="residentConfirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Confirm your password" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
+                    </div>
+                </div>
 
                 <!-- CREATE ACCOUNT BUTTON -->
-
-                <button
-                    type="submit"
-                    name="register"
-                    class="w-full rounded-xl bg-green-900 py-3 font-bold text-white transition hover:bg-green-800"
-                >
+                <button type="submit" name="register" class="w-full rounded-xl bg-green900 py-3 font-bold text-white transition hover:bg-green800">
                     CREATE ACCOUNT
                 </button>
 
             </form>
 
-
-            <!-- FORM FOOTER -->
-
+            <!-- REGISTRATION NOTICE -->
             <p class="mt-5 text-center text-xs text-gray-400">
-                If you need assistance with registration, please contact the barangay office.
+                Your registration may require verification by the barangay office.
             </p>
 
         </div>
-
     </div>
 
-
-    <!-- ==========================================
-         JAVASCRIPT
-    =========================================== -->
-
+    <!-- EXTERNAL JAVASCRIPT -->
     <script src="barangay.js"></script>
 
 </body>
