@@ -89,8 +89,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <div class="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
 
         <div class="text-center mb-8">
-
-            <h1 class="text-2xl font-bold text-green-900">
+        <img src="../asset/logo.jpg"
+     alt="Barangay Logo"
+     class="h-[100px] w-auto object-contain mx-auto">
+            <h1 class="text-3xl font-bold text-green-900">
                 BARANGAY GUINDACPAN
             </h1>
 

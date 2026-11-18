@@ -130,12 +130,12 @@
 
                 <div class="hidden md:flex items-center gap-7">
 
-                    <a href="resident/logIn.php"
+                    <a href="main.php"
                        class="text-green900 font-bold border-b-2 border-gold pb-1">
                         Home
                     </a>
 
-                    <a href="resident/dashboard.php"
+                    <a href="services.php"
                        class="text-gray-600 hover:text-green900 transition font-medium">
                         Services
                     </a>
@@ -1355,7 +1355,7 @@
                     <a href="terms.php" class="hover:text-gold2 transition">
                         Terms of Service
                     </a>
-                    <a href="admin/dashboards.php" class="hover:text-gold2 transition">
+                    <a href="admin/dashboard.php" class="hover:text-gold2 transition">
                       Admin Portal
     </a>
 
@@ -1412,8 +1412,8 @@
             </div>
 
             <!-- REGISTRATION FORM -->
-            <!-- Register.php must validate and save the account securely. -->
-            <form action="LogIn.php" method="POST" class="space-y-4">
+            <!-- Sends registration details to the root-level LogIn.php handler. -->
+            <form id="residentRegistrationForm" action="LogIn.php" method="POST" class="space-y-4">
 
                 <!-- FULL NAME -->
                 <div>
@@ -1483,13 +1483,11 @@
 
         </div>
 
-
-</div>
-
     </div>
 
-    <!-- EXTERNAL JAVASCRIPT -->
-    <script src="barangay.js"></script>
+    <!-- CREATE ACCOUNT MODAL CONTROLS -->
+ 
 
 </body>
+<script src="barangay.js"></script>
 </html>
