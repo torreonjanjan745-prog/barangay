@@ -387,37 +387,27 @@ try {
 
         </nav>
 
-        <!-- ADMIN ACCOUNT -->
-        <div class="p-5 border-t border-slate-800">
+       
+<form action="logout.php" method="POST">
+    <input
+        type="hidden"
+        name="csrf_token"
+        value="<?= e($_SESSION["admin_logout_csrf"]) ?>"
+    >
 
-            <div class="mb-4">
-                <p class="text-xs text-slate-500">
-                    Signed in as
-                </p>
+    <button
+        type="submit"
+        class="nav-link hover:!bg-red-700 w-full text-left border-0 cursor-pointer"
+    >
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M10 17l5-5-5-5"/>
+            <path d="M15 12H3"/>
+            <path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/>
+        </svg>
+        Logout
+    </button>
+</form>
 
-                <p class="font-semibold text-sm mt-1">
-                    <?= e($adminName) ?>
-                </p>
-
-                <p class="text-xs text-green-400">
-                    Administrator
-                </p>
-            </div>
-
-            <a href="logout.php"
-               class="nav-link hover:!bg-red-700">
-
-                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path d="M10 17l5-5-5-5"/>
-                    <path d="M15 12H3"/>
-                    <path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/>
-                </svg>
-
-                Logout
-
-            </a>
-
-        </div>
 
     </aside>
 

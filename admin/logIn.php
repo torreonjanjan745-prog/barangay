@@ -9,6 +9,11 @@ $isHttps = (
     $_SERVER['HTTPS'] !== 'off'
 );
 
+// Must match the session name used by admin/dashboard.php
+if (session_status() === PHP_SESSION_NONE) {
+    session_name('BARANGAY_ADMIN_SESSION');
+}
+
 ini_set('session.use_strict_mode', '1');
 ini_set('session.use_only_cookies', '1');
 ini_set('session.use_trans_sid', '0');
@@ -306,6 +311,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                         $_SESSION["admin_name"] = $adminName;
                         $_SESSION["admin_username"] = $adminUsername;
                         $_SESSION["admin_login_time"] = time();
+                        $_SESSION["admin_last_activity"] = time();
 
                         // =================================
                         // ROTATE CSRF TOKEN
