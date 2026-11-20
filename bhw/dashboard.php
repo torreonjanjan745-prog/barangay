@@ -1,7 +1,7 @@
 
 <?php
 // ==========================================
-// BHW DASHBOARD
+// BHW DASHBOARD - MYSQLI
 // ==========================================
 
 session_name("BARANGAY_BHW_SESSION");
@@ -14,12 +14,12 @@ session_start();
 
 // Check BHW login
 if (!isset($_SESSION["bhw_id"])) {
-    header("Location: login.php");
+    header("Location: logIn.php");
     exit;
 }
 
 // Database connection
-require_once "../db.php";
+require_once __DIR__ . "/database.php";
 
 // BHW information
 $bhwName = $_SESSION["bhw_name"] ?? "Barangay Health Worker";
@@ -28,37 +28,51 @@ $bhwName = $_SESSION["bhw_name"] ?? "Barangay Health Worker";
 // DATABASE STATISTICS
 // ==========================================
 
-function getCount($pdo, $table) {
-    try {
-        $allowedTables = [
-            "bhw_patients",
-            "bhw_appointments",
-            "bhw_health_records",
-            "bhw_immunization",
-            "bhw_prenatal"
-        ];
+function getCount($conn, $table) {
 
-        if (!in_array($table, $allowedTables, true)) {
-            return 0;
-        }
+    $allowedTables = [
+        "bhw_patients",
+        "bhw_appointments",
+        "bhw_health_records",
+        "bhw_immunization",
+        "bhw_prenatal"
+    ];
 
-        $stmt = $pdo->query("SELECT COUNT(*) FROM `$table`");
-
-        return (int) $stmt->fetchColumn();
-
-    } catch (PDOException $e) {
+    if (!in_array($table, $allowedTables, true)) {
         return 0;
     }
+
+    $sql = "SELECT COUNT(*) AS total FROM `$table`";
+    $result = mysqli_query($conn, $sql);
+
+    if (!$result) {
+        error_log(
+            "Dashboard Count Error (" . $table . "): " .
+            mysqli_error($conn)
+        );
+
+        return 0;
+    }
+
+    $row = mysqli_fetch_assoc($result);
+
+    mysqli_free_result($result);
+
+    return (int) ($row["total"] ?? 0);
 }
 
-$totalPatients = getCount($pdo, "bhw_patients");
-$totalAppointments = getCount($pdo, "bhw_appointments");
-$totalHealthRecords = getCount($pdo, "bhw_health_records");
-$totalImmunization = getCount($pdo, "bhw_immunization");
-$totalPrenatal = getCount($pdo, "bhw_prenatal");
+$totalPatients = getCount($conn, "bhw_patients");
+$totalAppointments = getCount($conn, "bhw_appointments");
+$totalHealthRecords = getCount($conn, "bhw_health_records");
+$totalImmunization = getCount($conn, "bhw_immunization");
+$totalPrenatal = getCount($conn, "bhw_prenatal");
+
+// ==========================================
+// ESCAPE OUTPUT
+// ==========================================
 
 function e($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
+    return htmlspecialchars((string) $value, ENT_QUOTES, "UTF-8");
 }
 
 ?>
@@ -707,7 +721,7 @@ function e($value) {
                         </p>
 
                         <p class="font-semibold">
-                            barangay_health_db
+                            barangay_db
                         </p>
                     </div>
 
@@ -744,8 +758,29 @@ function e($value) {
 
 
 
+<script>
+    // Mobile sidebar toggle
+    const menuBtn = document.getElementById("menuBtn");
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("overlay");
+
+    if (menuBtn && sidebar && overlay) {
+        menuBtn.addEventListener("click", function () {
+            sidebar.classList.toggle("show");
+            overlay.classList.toggle("hidden");
+        });
+
+        overlay.addEventListener("click", function () {
+            sidebar.classList.remove("show");
+            overlay.classList.add("hidden");
+        });
+    }
+
+    // Initialize Lucide icons
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+</script>
 
 </body>
-
-<script src="bhw.js"></script>
 </html>
