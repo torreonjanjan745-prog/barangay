@@ -4,6 +4,7 @@
 // BHW LOGIN SYSTEM - MYSQLI
 // =============================================
 
+// SESSION CONFIGURATION
 session_name("BARANGAY_BHW_SESSION");
 
 ini_set("session.use_strict_mode", "1");
@@ -20,9 +21,19 @@ session_set_cookie_params([
 
 session_start();
 
+// DATABASE CONNECTION
 require_once __DIR__ . "/database.php";
 
-// Already logged in
+mysqli_report(MYSQLI_REPORT_OFF);
+
+// CHECK DATABASE CONNECTION
+if (!isset($conn) || !($conn instanceof mysqli)) {
+    error_log("BHW Login: Invalid MySQLi database connection.");
+    http_response_code(500);
+    exit("Database connection error. Please check database.php.");
+}
+
+// ALREADY LOGGED IN
 if (!empty($_SESSION["bhw_id"])) {
     header("Location: dashboard.php");
     exit;
@@ -38,7 +49,6 @@ if (empty($_SESSION["bhw_login_csrf"])) {
 
 $message = "";
 $email = "";
-
 
 // =============================================
 // HANDLE LOGIN
@@ -57,26 +67,32 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         !is_string($token) ||
         !hash_equals($_SESSION["bhw_login_csrf"], $token)
     ) {
-
         $message = "Invalid request. Please refresh the page.";
 
     } elseif ($email === "" || $password === "") {
-
         $message = "Please enter your email and password.";
 
     } elseif (
         !filter_var($email, FILTER_VALIDATE_EMAIL) ||
         strlen($email) > 150
     ) {
-
         $message = "Invalid email or password.";
 
     } else {
 
-        // Check the exact table name in phpMyAdmin.
+        // =============================================
+        // FETCH BHW ACCOUNT
+        // TABLE: bhw_accounts
+        // =============================================
+
         $sql = "
-            SELECT id, full_name, email, password
-            FROM bhw_account
+            SELECT
+                id,
+                full_name,
+                email,
+                password,
+                status
+            FROM bhw_accounts
             WHERE email = ?
             LIMIT 1
         ";
@@ -99,40 +115,72 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             } else {
 
-                $result = mysqli_stmt_get_result($stmt);
-                $account = $result ? mysqli_fetch_assoc($result) : null;
+                mysqli_stmt_bind_result(
+                    $stmt,
+                    $accountId,
+                    $fullName,
+                    $accountEmail,
+                    $hashedPassword,
+                    $accountStatus
+                );
 
-                if (
-                    $account &&
-                    password_verify($password, $account["password"])
-                ) {
+                if (mysqli_stmt_fetch($stmt)) {
 
-                    session_regenerate_id(true);
+                    // VERIFY PASSWORD
+                    if (
+                        is_string($hashedPassword) &&
+                        password_verify($password, $hashedPassword)
+                    ) {
 
-                    $_SESSION["bhw_id"] = (int) $account["id"];
-                    $_SESSION["bhw_name"] = $account["full_name"];
-                    $_SESSION["bhw_email"] = $account["email"];
+                        // CHECK ADMIN APPROVAL
+                        if (strcasecmp(trim((string)$accountStatus), "Active") !== 0) {
 
-                    unset($_SESSION["bhw_login_csrf"]);
+                            $message = "Your account is pending administrator approval. Please contact your administrator.";
 
-                    mysqli_stmt_close($stmt);
+                        } else {
 
-                    header("Location: dashboard.php");
-                    exit;
+                            // REGENERATE SESSION ID
+                            session_regenerate_id(true);
+
+                            // STORE BHW SESSION
+                            $_SESSION["bhw_id"] = (int)$accountId;
+                            $_SESSION["bhw_name"] = $fullName;
+                            $_SESSION["bhw_email"] = $accountEmail;
+
+                            // REMOVE LOGIN CSRF TOKEN
+                            unset($_SESSION["bhw_login_csrf"]);
+
+                            mysqli_stmt_close($stmt);
+
+                            // REDIRECT TO DASHBOARD
+                            header("Location: dashboard.php");
+                            exit;
+                        }
+
+                    } else {
+
+                        $message = "Invalid email or password.";
+                    }
 
                 } else {
 
                     $message = "Invalid email or password.";
-
                 }
-
             }
 
             mysqli_stmt_close($stmt);
-
         }
     }
 }
+
+// =============================================
+// GENERATE NEW CSRF TOKEN IF NECESSARY
+// =============================================
+
+if (empty($_SESSION["bhw_login_csrf"])) {
+    $_SESSION["bhw_login_csrf"] = bin2hex(random_bytes(32));
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -148,7 +196,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
 
     <style>
         body {
@@ -214,7 +265,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     </div>
 
-
     <!-- LOGIN FORM -->
 
     <div class="p-7 sm:p-12 flex flex-col justify-center">
@@ -237,7 +287,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         </div>
 
-
         <div class="mb-8">
 
             <span class="text-blue-600 text-xs font-bold tracking-widest uppercase">
@@ -254,12 +303,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         </div>
 
-
         <!-- ERROR MESSAGE -->
 
         <?php if ($message !== ""): ?>
 
-            <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-sm flex gap-3">
+            <div
+                class="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-sm flex gap-3"
+                role="alert"
+            >
 
                 <i data-lucide="alert-circle" class="w-5 h-5 shrink-0"></i>
 
@@ -271,7 +322,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <?php endif; ?>
 
-
         <form method="POST" action="" class="space-y-5">
 
             <input
@@ -279,7 +329,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 name="csrf_token"
                 value="<?= htmlspecialchars($_SESSION["bhw_login_csrf"], ENT_QUOTES, "UTF-8") ?>"
             >
-
 
             <!-- EMAIL -->
 
@@ -291,7 +340,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 <div class="relative">
 
-                    <i data-lucide="mail" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                    <i
+                        data-lucide="mail"
+                        class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"
+                    ></i>
 
                     <input
                         type="email"
@@ -308,7 +360,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             </div>
 
-
             <!-- PASSWORD -->
 
             <div>
@@ -319,7 +370,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 <div class="relative">
 
-                    <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                    <i
+                        data-lucide="lock"
+                        class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"
+                    ></i>
 
                     <input
                         type="password"
@@ -344,7 +398,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             </div>
 
-
             <!-- LOGIN BUTTON -->
 
             <button
@@ -360,7 +413,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         </form>
 
-
         <!-- FOOTER LINKS -->
 
         <div class="text-center mt-7">
@@ -369,7 +421,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 Don't have an account?
 
-                <a href="create.php" class="text-blue-600 font-bold hover:text-blue-800">
+                <a
+                    href="create.php"
+                    class="text-blue-600 font-bold hover:text-blue-800"
+                >
                     Create Account
                 </a>
 
@@ -392,46 +447,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 </div>
 
-
-<!-- LUCIDE ICONS -->
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-
-    const togglePassword = document.getElementById("togglePassword");
-    const password = document.getElementById("password");
-
-    if (togglePassword && password) {
-
-        togglePassword.addEventListener("click", function () {
-
-            const show = password.type === "password";
-
-            password.type = show ? "text" : "password";
-
-            togglePassword.innerHTML = show
-                ? '<i data-lucide="eye-off" class="w-5 h-5"></i>'
-                : '<i data-lucide="eye" class="w-5 h-5"></i>';
-
-            togglePassword.setAttribute(
-                "aria-label",
-                show ? "Hide password" : "Show password"
-            );
-
-            if (window.lucide) {
-                window.lucide.createIcons();
-            }
-
-        });
-
-    }
-
-    if (window.lucide) {
-        window.lucide.createIcons();
-    }
-
-});
-</script>
+<script src="bhw.js"></script>
 
 </body>
 </html>

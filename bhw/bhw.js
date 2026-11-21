@@ -139,34 +139,7 @@ document.addEventListener("DOMContentLoaded", function () {
     // LOGIN PASSWORD TOGGLE
     // ============================================
 
-    const togglePassword = document.getElementById("togglePassword");
-    const password = document.getElementById("password");
-
-    if (togglePassword && password) {
-
-        togglePassword.addEventListener("click", function () {
-
-            const show = password.type === "password";
-
-            password.type = show ? "text" : "password";
-
-            togglePassword.innerHTML = show
-                ? '<i data-lucide="eye-off" class="w-5 h-5"></i>'
-                : '<i data-lucide="eye" class="w-5 h-5"></i>';
-
-            togglePassword.setAttribute(
-                "aria-label",
-                show ? "Hide password" : "Show password"
-            );
-
-            if (window.lucide) {
-                window.lucide.createIcons();
-            }
-
-        });
-
-    }
-
+    
     // ============================================
     // INITIALIZE LUCIDE ICONS
     // ============================================
@@ -176,3 +149,60 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
 });
+    // Mobile sidebar toggle
+    const menuBtn = document.getElementById("menuBtn");
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("overlay");
+
+    if (menuBtn && sidebar && overlay) {
+        menuBtn.addEventListener("click", function () {
+            sidebar.classList.toggle("show");
+            overlay.classList.toggle("hidden");
+        });
+
+        overlay.addEventListener("click", function () {
+            sidebar.classList.remove("show");
+            overlay.classList.add("hidden");
+        });
+    }
+
+    // Initialize Lucide icons
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+    document.addEventListener("DOMContentLoaded", function () {
+
+        const togglePassword = document.getElementById("togglePassword");
+        const password = document.getElementById("password");
+    
+        if (togglePassword && password) {
+    
+            togglePassword.addEventListener("click", function () {
+    
+                const show = password.type === "password";
+    
+                password.type = show ? "text" : "password";
+    
+                togglePassword.innerHTML = show
+                    ? '<i data-lucide="eye-off" class="w-5 h-5"></i>'
+                    : '<i data-lucide="eye" class="w-5 h-5"></i>';
+    
+                togglePassword.setAttribute(
+                    "aria-label",
+                    show ? "Hide password" : "Show password"
+                );
+    
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+    
+            });
+    
+        }
+    
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+    
+    });
+    

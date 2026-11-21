@@ -5,12 +5,12 @@
 // ============================================
 
 $host = "localhost";
-$dbname = "barangay_db";
+$dbname = "barangay_health_db";
 $username = "root";
 $password = "";
 $port = 3306;
 
-// Create MySQLi connection
+// CREATE MYSQLI CONNECTION
 $conn = mysqli_connect(
     $host,
     $username,
@@ -19,16 +19,13 @@ $conn = mysqli_connect(
     $port
 );
 
-// Check connection
+// CHECK CONNECTION
 if (!$conn) {
-
     error_log("Database Connection Failed: " . mysqli_connect_error());
-
     die("Database connection error. Please contact the administrator.");
-
 }
 
-// Set character encoding
+// SET CHARACTER ENCODING
 mysqli_set_charset($conn, "utf8mb4");
 
 ?>

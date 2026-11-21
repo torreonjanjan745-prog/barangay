@@ -758,29 +758,10 @@ function e($value) {
 
 
 
-<script>
-    // Mobile sidebar toggle
-    const menuBtn = document.getElementById("menuBtn");
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("overlay");
 
-    if (menuBtn && sidebar && overlay) {
-        menuBtn.addEventListener("click", function () {
-            sidebar.classList.toggle("show");
-            overlay.classList.toggle("hidden");
-        });
 
-        overlay.addEventListener("click", function () {
-            sidebar.classList.remove("show");
-            overlay.classList.add("hidden");
-        });
-    }
 
-    // Initialize Lucide icons
-    if (window.lucide) {
-        lucide.createIcons();
-    }
-</script>
 
 </body>
+<script src="bhw.js"></script>
 </html>
