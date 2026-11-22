@@ -2,6 +2,19 @@
 document.addEventListener("DOMContentLoaded", function () {
 
     // ============================================
+    // INITIALIZE LUCIDE ICONS
+    // ============================================
+
+    function initializeIcons() {
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+    }
+
+    initializeIcons();
+
+
+    // ============================================
     // MOBILE SIDEBAR
     // ============================================
 
@@ -11,62 +24,104 @@ document.addEventListener("DOMContentLoaded", function () {
     const overlay = document.getElementById("overlay");
 
     function openSidebar() {
-        if (sidebar) {
-            sidebar.classList.remove("-translate-x-full");
-            sidebar.classList.add("show");
-        }
 
-        if (overlay) {
-            overlay.classList.remove("hidden");
-        }
+        if (!sidebar || !overlay) return;
+
+        sidebar.classList.remove("-translate-x-full");
+        sidebar.classList.add("show");
+
+        overlay.classList.remove("hidden");
+
+        document.body.classList.add("overflow-hidden");
     }
 
     function closeSidebar() {
-        if (sidebar) {
-            sidebar.classList.add("-translate-x-full");
-            sidebar.classList.remove("show");
-        }
 
-        if (overlay) {
-            overlay.classList.add("hidden");
-        }
+        if (!sidebar || !overlay) return;
+
+        sidebar.classList.add("-translate-x-full");
+        sidebar.classList.remove("show");
+
+        overlay.classList.add("hidden");
+
+        document.body.classList.remove("overflow-hidden");
     }
 
-    if (menuBtn && sidebar && overlay) {
-        menuBtn.addEventListener("click", function () {
-            const isOpen =
-                sidebar.classList.contains("show") ||
-                !sidebar.classList.contains("-translate-x-full");
+    if (menuBtn) {
 
-            if (isOpen) {
+        menuBtn.addEventListener("click", function () {
+
+            if (sidebar && sidebar.classList.contains("show")) {
                 closeSidebar();
             } else {
                 openSidebar();
             }
+
         });
 
-        overlay.addEventListener("click", closeSidebar);
+    }
 
-        if (closeMenuBtn) {
-            closeMenuBtn.addEventListener("click", closeSidebar);
+    if (closeMenuBtn) {
+        closeMenuBtn.addEventListener("click", closeSidebar);
+    }
+
+    if (overlay) {
+        overlay.addEventListener("click", closeSidebar);
+    }
+
+    // CLOSE SIDEBAR WHEN CLICKING A LINK
+
+    if (sidebar) {
+
+        sidebar.querySelectorAll("a").forEach(function (link) {
+
+            link.addEventListener("click", function () {
+
+                if (window.innerWidth < 768) {
+                    closeSidebar();
+                }
+
+            });
+
+        });
+
+    }
+
+    // CLOSE SIDEBAR USING ESCAPE
+
+    document.addEventListener("keydown", function (event) {
+
+        if (event.key === "Escape") {
+            closeSidebar();
         }
 
-        document.addEventListener("keydown", function (event) {
-            if (event.key === "Escape") {
-                closeSidebar();
-            }
-        });
-    }
+    });
+
+    // CLOSE SIDEBAR WHEN SCREEN BECOMES DESKTOP
+
+    window.addEventListener("resize", function () {
+
+        if (window.innerWidth >= 768) {
+            closeSidebar();
+        }
+
+    });
+
 
     // ============================================
     // PROFILE UPDATE CONFIRMATION
     // ============================================
 
-    const profileForm = document
-        .querySelector('button[name="update_profile"]')
-        ?.closest("form");
+    const profileButton = document.querySelector(
+        'button[name="update_profile"]'
+    );
+
+    const profileForm = profileButton
+        ? profileButton.closest("form")
+        : null;
 
     if (profileForm) {
+
         profileForm.addEventListener("submit", function (event) {
 
             if (!confirm("Are you sure you want to update your profile?")) {
@@ -74,7 +129,9 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
         });
+
     }
+
 
     // ============================================
     // PASSWORD CHANGE VALIDATION
@@ -83,6 +140,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const passwordForm = document.getElementById("passwordForm");
 
     if (passwordForm) {
+
         passwordForm.addEventListener("submit", function (event) {
 
             const newPassword = passwordForm.querySelector(
@@ -93,15 +151,15 @@ document.addEventListener("DOMContentLoaded", function () {
                 '[name="confirm_password"]'
             );
 
-            if (!newPassword || !confirmPassword) {
-                return;
-            }
+            if (!newPassword || !confirmPassword) return;
 
             if (newPassword.value !== confirmPassword.value) {
 
                 event.preventDefault();
 
                 alert("New password and confirm password do not match!");
+
+                confirmPassword.focus();
 
                 return;
             }
@@ -111,7 +169,9 @@ document.addEventListener("DOMContentLoaded", function () {
             }
 
         });
+
     }
+
 
     // ============================================
     // PASSWORD SHOW / HIDE
@@ -131,78 +191,97 @@ document.addEventListener("DOMContentLoaded", function () {
 
             this.textContent = show ? "Hide" : "Show";
 
+            this.setAttribute(
+                "aria-label",
+                show ? "Hide password" : "Show password"
+            );
+
         });
 
     });
+
 
     // ============================================
     // LOGIN PASSWORD TOGGLE
     // ============================================
 
-    
+    const loginToggle = document.getElementById("togglePassword");
+    const loginPassword = document.getElementById("password");
+
+    if (loginToggle && loginPassword) {
+
+        loginToggle.addEventListener("click", function () {
+
+            const show = loginPassword.type === "password";
+
+            loginPassword.type = show ? "text" : "password";
+
+            loginToggle.innerHTML = show
+                ? '<i data-lucide="eye-off" class="w-5 h-5"></i>'
+                : '<i data-lucide="eye" class="w-5 h-5"></i>';
+
+            loginToggle.setAttribute(
+                "aria-label",
+                show ? "Hide password" : "Show password"
+            );
+
+            initializeIcons();
+
+        });
+
+    }
+
+
     // ============================================
-    // INITIALIZE LUCIDE ICONS
+    // GENERAL PASSWORD TOGGLE FUNCTION
     // ============================================
 
-    if (window.lucide) {
-        window.lucide.createIcons();
-    }
+    window.togglePassword = function (inputId, iconId) {
+
+        const input = document.getElementById(inputId);
+        const icon = document.getElementById(iconId);
+
+        if (!input || !icon) return;
+
+        const show = input.type === "password";
+
+        input.type = show ? "text" : "password";
+
+        icon.setAttribute(
+            "data-lucide",
+            show ? "eye-off" : "eye"
+        );
+
+        initializeIcons();
+
+    };
+
 
 });
-    // Mobile sidebar toggle
-    const menuBtn = document.getElementById("menuBtn");
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("overlay");
+if (window.lucide) {
+    lucide.createIcons();
+}
 
-    if (menuBtn && sidebar && overlay) {
-        menuBtn.addEventListener("click", function () {
-            sidebar.classList.toggle("show");
-            overlay.classList.toggle("hidden");
-        });
+// SHOW / HIDE PASSWORD
+function togglePassword(inputId, iconId) {
 
-        overlay.addEventListener("click", function () {
-            sidebar.classList.remove("show");
-            overlay.classList.add("hidden");
-        });
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+
+    if (!input || !icon) {
+        return;
     }
 
-    // Initialize Lucide icons
+    const showPassword = input.type === "password";
+
+    input.type = showPassword ? "text" : "password";
+
+    icon.setAttribute(
+        "data-lucide",
+        showPassword ? "eye-off" : "eye"
+    );
+
     if (window.lucide) {
         lucide.createIcons();
     }
-    document.addEventListener("DOMContentLoaded", function () {
-
-        const togglePassword = document.getElementById("togglePassword");
-        const password = document.getElementById("password");
-    
-        if (togglePassword && password) {
-    
-            togglePassword.addEventListener("click", function () {
-    
-                const show = password.type === "password";
-    
-                password.type = show ? "text" : "password";
-    
-                togglePassword.innerHTML = show
-                    ? '<i data-lucide="eye-off" class="w-5 h-5"></i>'
-                    : '<i data-lucide="eye" class="w-5 h-5"></i>';
-    
-                togglePassword.setAttribute(
-                    "aria-label",
-                    show ? "Hide password" : "Show password"
-                );
-    
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
-    
-            });
-    
-        }
-    
-        if (window.lucide) {
-            window.lucide.createIcons();
-        }
-    
-    });
-    
+}

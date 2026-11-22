@@ -1,39 +1,50 @@
 
 <?php
 // =============================================
-// ADMINISTRATOR LOGIN SYSTEM - MYSQLI
+// ADMINISTRATOR LOGIN SYSTEM - PDO
+// BARANGAY GUINDACPAN
 // =============================================
 
 // SESSION CONFIGURATION
-session_name("BARANGAY_ADMIN_SESSION");
+$isHttps = (
+    isset($_SERVER["HTTPS"]) &&
+    $_SERVER["HTTPS"] !== "off"
+);
 
-ini_set("session.use_strict_mode", "1");
-ini_set("session.use_only_cookies", "1");
-ini_set("session.use_trans_sid", "0");
+if (session_status() === PHP_SESSION_NONE) {
 
-session_set_cookie_params([
-    "lifetime" => 0,
-    "path" => "/",
-    "secure" => !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off",
-    "httponly" => true,
-    "samesite" => "Lax"
-]);
+    session_name("BARANGAY_ADMIN_SESSION");
 
-session_start();
+    ini_set("session.use_strict_mode", "1");
+    ini_set("session.use_only_cookies", "1");
+    ini_set("session.use_trans_sid", "0");
 
-mysqli_report(MYSQLI_REPORT_OFF);
+    session_set_cookie_params([
+        "lifetime" => 0,
+        "path" => "/",
+        "secure" => $isHttps,
+        "httponly" => true,
+        "samesite" => "Lax"
+    ]);
+
+    session_start();
+}
+
+// SECURITY HEADERS
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("X-Content-Type-Options: nosniff");
+header("X-Frame-Options: DENY");
+header("Referrer-Policy: no-referrer");
 
 // DATABASE CONNECTION
 require_once __DIR__ . "/../db.php";
 
-// VERIFY DATABASE CONNECTION
-if (!isset($conn) || !($conn instanceof mysqli) || $conn->connect_errno) {
-    error_log("Admin Login: Database connection unavailable.");
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    error_log("Admin Login: PDO connection unavailable.");
     http_response_code(500);
     exit("Database connection error. Please check db.php.");
 }
-
-$conn->set_charset("utf8mb4");
 
 // CHECK EXISTING ADMIN SESSION
 if (isset($_SESSION["admin_id"])) {
@@ -43,7 +54,7 @@ if (isset($_SESSION["admin_id"])) {
 
 // INITIAL VALUES
 $message = "";
-$email = "";
+$username = "";
 
 // CSRF TOKEN
 if (empty($_SESSION["admin_login_csrf"])) {
@@ -56,115 +67,99 @@ if (empty($_SESSION["admin_login_csrf"])) {
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $emailInput = $_POST["email"] ?? "";
+    $usernameInput = $_POST["username"] ?? "";
     $passwordInput = $_POST["password"] ?? "";
-    $token = $_POST["csrf_token"] ?? "";
+    $tokenInput = $_POST["csrf_token"] ?? "";
 
-    $email = is_string($emailInput) ? trim($emailInput) : "";
-    $password = is_string($passwordInput) ? $passwordInput : "";
+    $username = is_string($usernameInput)
+        ? trim($usernameInput)
+        : "";
+
+    $password = is_string($passwordInput)
+        ? $passwordInput
+        : "";
+
+    $token = is_string($tokenInput)
+        ? $tokenInput
+        : "";
 
     // CSRF VALIDATION
     if (
-        !is_string($token) ||
-        !hash_equals($_SESSION["admin_login_csrf"], $token)
+        !hash_equals(
+            $_SESSION["admin_login_csrf"],
+            $token
+        )
     ) {
 
         $message = "Invalid request. Please refresh the page.";
 
-    } elseif (
-        $email === "" ||
-        $password === "" ||
-        !filter_var($email, FILTER_VALIDATE_EMAIL)
-    ) {
+    } elseif ($username === "" || $password === "") {
 
-        $message = "Please enter a valid email and password.";
+        $message = "Please enter your username and password.";
 
     } else {
 
-        // FIND ADMIN ACCOUNT
-        $sql = "
-            SELECT
-                id,
-                full_name,
-                email,
-                password,
-                status
-            FROM admin_account
-            WHERE email = ?
-            LIMIT 1
-        ";
+        try {
 
-        $stmt = mysqli_prepare($conn, $sql);
+            // FIND ADMIN ACCOUNT
+            $stmt = $pdo->prepare(
+                "SELECT
+                    id,
+                    full_name,
+                    username,
+                    password
+                 FROM admin_users
+                 WHERE username = :username
+                 LIMIT 1"
+            );
 
-        if (!$stmt) {
+            $stmt->execute([
+                ":username" => $username
+            ]);
 
-            error_log("Admin Login Prepare Error: " . mysqli_error($conn));
+            $admin = $stmt->fetch();
 
-            $message = "Unable to process login. Please check the database.";
+            // VERIFY PASSWORD
+            if (
+                $admin &&
+                password_verify($password, $admin["password"])
+            ) {
 
-        } else {
+                // REGENERATE SESSION ID
+                session_regenerate_id(true);
 
-            mysqli_stmt_bind_param($stmt, "s", $email);
+                // ADMIN SESSION
+                $_SESSION["admin_id"] = (int)$admin["id"];
+                $_SESSION["admin_name"] = $admin["full_name"];
+                $_SESSION["admin_username"] = $admin["username"];
+                $_SESSION["admin_role"] = "Administrator";
 
-            if (!mysqli_stmt_execute($stmt)) {
+                $_SESSION["admin_login_time"] = time();
+                $_SESSION["admin_last_activity"] = time();
 
-                error_log("Admin Login Execute Error: " . mysqli_stmt_error($stmt));
+                // ROTATE CSRF TOKEN
+                $_SESSION["admin_login_csrf"] = bin2hex(random_bytes(32));
 
-                $message = "Unable to process login. Please try again.";
+                // REDIRECT TO DASHBOARD
+                header("Location: dashboard.php");
+                exit;
 
             } else {
 
-                mysqli_stmt_bind_result(
-                    $stmt,
-                    $adminId,
-                    $adminName,
-                    $adminEmail,
-                    $hashedPassword,
-                    $adminStatus
-                );
+                $message = "Invalid username or password.";
 
-                if (mysqli_stmt_fetch($stmt)) {
-
-                    // VERIFY PASSWORD AND ACCOUNT STATUS
-                    if (
-                        password_verify($password, $hashedPassword) &&
-                        strcasecmp(trim((string)$adminStatus), "Active") === 0
-                    ) {
-
-                        // REGENERATE SESSION ID
-                        session_regenerate_id(true);
-
-                        // ADMIN SESSION
-                        $_SESSION["admin_id"] = $adminId;
-                        $_SESSION["admin_name"] = $adminName;
-                        $_SESSION["admin_email"] = $adminEmail;
-                        $_SESSION["admin_role"] = "Administrator";
-
-                        // REGENERATE CSRF TOKEN
-                        $_SESSION["admin_login_csrf"] = bin2hex(random_bytes(32));
-
-                        mysqli_stmt_close($stmt);
-
-                        // REDIRECT TO ADMIN DASHBOARD
-                        header("Location: dashboard.php");
-                        exit;
-
-                    } else {
-
-                        $message = "Invalid email or password, or your account is inactive.";
-
-                    }
-
-                } else {
-
-                    $message = "Invalid email or password.";
-
-                }
             }
 
-            mysqli_stmt_close($stmt);
+        } catch (PDOException $e) {
+
+            error_log("Admin Login Database Error: " . $e->getMessage());
+
+            $message = "Unable to process login. Please check the database table.";
         }
     }
+
+    // ROTATE CSRF TOKEN
+    $_SESSION["admin_login_csrf"] = bin2hex(random_bytes(32));
 }
 ?>
 
@@ -172,175 +167,232 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Administrator Login | Barangay Health System</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 25px;
+            background: #000000;
+            font-family: Arial, sans-serif;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 430px;
+            background: #ffffff;
+            padding: 38px;
+            border-radius: 18px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.10);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            width: 68px;
+            height: 68px;
+            margin: 0 auto 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #dbeafe;
+            color: #1d4ed8;
+            border-radius: 18px;
+            font-size: 34px;
+        }
+
+        h1 {
+            font-size: 24px;
+            color: #111827;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .error-message {
+            padding: 13px;
+            margin-bottom: 20px;
+            border-radius: 9px;
+            color: #b91c1c;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            font-size: 13px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 9px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #374151;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            background: #1d4ed8;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #1e40af;
+        }
+
+        .footer {
+            margin-top: 27px;
+            text-align: center;
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 27px 22px;
+            }
+
+            h1 {
+                font-size: 21px;
+            }
+        }
+    </style>
+
 </head>
 
-<body class="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+<body>
 
-    <div class="w-full max-w-md bg-white rounded-2xl shadow-xl p-7 sm:p-9">
+    <main class="login-container">
 
-        <!-- HEADER -->
-        <div class="text-center mb-8">
+        <div class="header">
 
-            <div class="w-16 h-16 bg-blue-100 text-blue-700 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                <i data-lucide="shield-check" class="w-9 h-9"></i>
+            <div class="logo">
+                🛡️
             </div>
 
-            <h1 class="text-2xl font-bold text-gray-900">
-                Administrator Login
-            </h1>
+            <h1>Administrator Login</h1>
 
-            <p class="text-gray-500 text-sm mt-2">
+            <p class="subtitle">
                 Sign in to access the administrator portal.
             </p>
 
         </div>
 
-        <!-- ERROR MESSAGE -->
         <?php if ($message !== ""): ?>
 
-            <div class="mb-5 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-start gap-2">
+            <div class="error-message" role="alert">
 
-                <i data-lucide="alert-circle" class="w-5 h-5 shrink-0"></i>
-
-                <span>
-                    <?php echo htmlspecialchars($message, ENT_QUOTES, "UTF-8"); ?>
-                </span>
+                <?= htmlspecialchars(
+                    $message,
+                    ENT_QUOTES,
+                    "UTF-8"
+                ) ?>
 
             </div>
 
         <?php endif; ?>
 
-        <!-- LOGIN FORM -->
-        <form method="POST" action="" class="space-y-5">
+        <form method="POST" action="">
 
             <input
                 type="hidden"
                 name="csrf_token"
-                value="<?php echo htmlspecialchars($_SESSION["admin_login_csrf"], ENT_QUOTES, "UTF-8"); ?>"
-            >
+                value="<?= htmlspecialchars(
+                    $_SESSION["admin_login_csrf"],
+                    ENT_QUOTES,
+                    "UTF-8"
+                ) ?>">
 
-            <!-- EMAIL -->
-            <div>
+            <div class="form-group">
 
-                <label class="block text-sm font-semibold text-gray-700 mb-2">
-                    Email Address
+                <label for="username">
+                    Admin Username
                 </label>
 
-                <div class="relative">
-
-                    <i data-lucide="mail" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
-
-                    <input
-                        type="email"
-                        name="email"
-                        value="<?php echo htmlspecialchars($email, ENT_QUOTES, "UTF-8"); ?>"
-                        placeholder="Enter your email"
-                        maxlength="150"
-                        autocomplete="username"
-                        class="w-full border border-gray-300 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                    >
-
-                </div>
+                <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    value="<?= htmlspecialchars(
+                        $username,
+                        ENT_QUOTES,
+                        "UTF-8"
+                    ) ?>"
+                    placeholder="Enter your admin username"
+                    maxlength="100"
+                    autocomplete="username"
+                    required>
 
             </div>
 
-            <!-- PASSWORD -->
-            <div>
+            <div class="form-group">
 
-                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                <label for="password">
                     Password
                 </label>
 
-                <div class="relative">
-
-                    <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
-
-                    <input
-                        type="password"
-                        name="password"
-                        id="adminPassword"
-                        placeholder="Enter your password"
-                        autocomplete="current-password"
-                        class="w-full border border-gray-300 rounded-xl pl-11 pr-12 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                    >
-
-                    <button
-                        type="button"
-                        onclick="toggleAdminPassword()"
-                        class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
-                        aria-label="Show or hide password"
-                    >
-                        <i data-lucide="eye" id="adminEye" class="w-5 h-5"></i>
-                    </button>
-
-                </div>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Enter your password"
+                    autocomplete="current-password"
+                    required>
 
             </div>
 
-            <!-- LOGIN BUTTON -->
-            <button
-                type="submit"
-                class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2"
-            >
-
-                <i data-lucide="log-in" class="w-5 h-5"></i>
-
-                Sign In
-
+            <button type="submit">
+                SIGN IN TO ADMIN PORTAL
             </button>
 
         </form>
 
-        <!-- FOOTER -->
-        <div class="text-center mt-7 text-sm text-gray-500">
-            Administrator Portal
+        <div class="footer">
+            Barangay Guindacpan Administrator Portal
         </div>
 
-    </div>
-
-    <!-- JAVASCRIPT -->
-    <script>
-
-        function toggleAdminPassword() {
-
-            const input = document.getElementById("adminPassword");
-            const icon = document.getElementById("adminEye");
-
-            if (!input || !icon) return;
-
-            if (input.type === "password") {
-
-                input.type = "text";
-                icon.setAttribute("data-lucide", "eye-off");
-
-            } else {
-
-                input.type = "password";
-                icon.setAttribute("data-lucide", "eye");
-
-            }
-
-            lucide.createIcons();
-        }
-
-        document.addEventListener("DOMContentLoaded", function () {
-
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-
-        });
-
-    </script>
+    </main>
 
 </body>
 </html>

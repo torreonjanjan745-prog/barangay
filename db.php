@@ -1,31 +1,31 @@
 
 <?php
-// ============================================
-// MAIN DATABASE CONNECTION
-// ============================================
+// =============================================
+// MAIN BARANGAY DATABASE CONNECTION - PDO
+// Database: barangay_db
+// =============================================
 
 $host = "localhost";
-$dbname = "barangay_health_db";
+$port = "3306";
+$dbname = "barangay_db";
 $username = "root";
 $password = "";
-$port = 3306;
 
-// CREATE MYSQLI CONNECTION
-$conn = mysqli_connect(
-    $host,
-    $username,
-    $password,
-    $dbname,
-    $port
-);
+try {
+    $pdo = new PDO(
+        "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4",
+        $username,
+        $password,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false
+        ]
+    );
 
-// CHECK CONNECTION
-if (!$conn) {
-    error_log("Database Connection Failed: " . mysqli_connect_error());
-    die("Database connection error. Please contact the administrator.");
+} catch (PDOException $e) {
+    error_log("Main Database Connection Error: " . $e->getMessage());
+
+    http_response_code(500);
+    exit("Main database connection failed. Please check your database settings.");
 }
-
-// SET CHARACTER ENCODING
-mysqli_set_charset($conn, "utf8mb4");
-
-?>

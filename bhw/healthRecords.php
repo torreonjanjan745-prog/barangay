@@ -2,178 +2,319 @@
 <?php
 // =============================================
 // BHW HEALTH RECORDS MANAGEMENT
+// PDO VERSION
+// Database: barangay_health_db
 // =============================================
 
+// SESSION
 session_name("BARANGAY_BHW_SESSION");
 session_start();
 
+// PREVENT BROWSER CACHING
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("X-Content-Type-Options: nosniff");
+
+// AUTHENTICATION
 if (!isset($_SESSION["bhw_id"])) {
-    header("Location: login.php");
+    header("Location: logIn.php");
     exit;
 }
 
-require_once "../db.php";
+// DATABASE CONNECTION
+require_once __DIR__ . "/database.php";
 
-$bhw_id = (int)$_SESSION["bhw_id"];
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    http_response_code(500);
+    exit("Database connection error. Please check database.php.");
+}
+
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+$bhw_id = (int) $_SESSION["bhw_id"];
+
 $message = "";
 $error = "";
 
+// =============================================
+// HELPER FUNCTIONS
+// =============================================
+
 function e($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
+    return htmlspecialchars((string) $value, ENT_QUOTES, "UTF-8");
+}
+
+function validVisitDate($date) {
+    if (!is_string($date) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return false;
+    }
+
+    $parts = explode("-", $date);
+
+    return checkdate((int)$parts[1], (int)$parts[2], (int)$parts[0]);
+}
+
+function nullableNumber($value) {
+    if ($value === "" || $value === null) {
+        return null;
+    }
+
+    if (!is_numeric($value)) {
+        return false;
+    }
+
+    $number = (float) $value;
+
+    if (!is_finite($number) || $number < 0) {
+        return false;
+    }
+
+    return $number;
 }
 
 // =============================================
-// ADD HEALTH RECORD
+// CSRF TOKEN
 // =============================================
 
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["add_record"])) {
+if (empty($_SESSION["health_records_csrf"])) {
+    $_SESSION["health_records_csrf"] = bin2hex(random_bytes(32));
+}
 
-    $patient_id = (int)($_POST["patient_id"] ?? 0);
-    $visit_date = $_POST["visit_date"] ?? "";
-    $blood_pressure = trim($_POST["blood_pressure"] ?? "");
-    $temperature = ($_POST["temperature"] ?? "") !== "" ? (float)$_POST["temperature"] : null;
-    $weight = ($_POST["weight"] ?? "") !== "" ? (float)$_POST["weight"] : null;
-    $height = ($_POST["height"] ?? "") !== "" ? (float)$_POST["height"] : null;
-    $symptoms = trim($_POST["symptoms"] ?? "");
-    $diagnosis = trim($_POST["diagnosis"] ?? "");
-    $treatment = trim($_POST["treatment"] ?? "");
-    $notes = trim($_POST["notes"] ?? "");
+$csrfToken = $_SESSION["health_records_csrf"];
 
-    if ($patient_id <= 0 || $visit_date === "") {
-        $error = "Please select a patient and enter the visit date.";
+// =============================================
+// HANDLE POST REQUESTS
+// =============================================
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+
+    $submittedToken = $_POST["csrf_token"] ?? "";
+
+    if (
+        !is_string($submittedToken) ||
+        !hash_equals($csrfToken, $submittedToken)
+    ) {
+        $error = "Invalid request. Please refresh the page and try again.";
     } else {
 
-        $check = $pdo->prepare("
-            SELECT id FROM bhw_patients WHERE id = ?
-        ");
-        $check->execute([$patient_id]);
+        try {
 
-        if (!$check->fetch()) {
-            $error = "Selected patient does not exist.";
-        } else {
+            // =============================================
+            // ADD HEALTH RECORD
+            // =============================================
 
-            $stmt = $pdo->prepare("
-                INSERT INTO bhw_health_records
-                (
-                    patient_id,
-                    bhw_id,
-                    visit_date,
-                    blood_pressure,
-                    temperature,
-                    weight,
-                    height,
-                    symptoms,
-                    diagnosis,
-                    treatment,
-                    notes
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
+            if (isset($_POST["add_record"])) {
 
-            $stmt->execute([
-                $patient_id,
-                $bhw_id,
-                $visit_date,
-                $blood_pressure ?: null,
-                $temperature,
-                $weight,
-                $height,
-                $symptoms ?: null,
-                $diagnosis ?: null,
-                $treatment ?: null,
-                $notes ?: null
-            ]);
+                $patient_id = (int) ($_POST["patient_id"] ?? 0);
+                $visit_date = trim($_POST["visit_date"] ?? "");
 
-            header("Location: health_records.php?success=added");
-            exit;
+                $blood_pressure = trim($_POST["blood_pressure"] ?? "");
+                $temperature = nullableNumber($_POST["temperature"] ?? "");
+                $weight = nullableNumber($_POST["weight"] ?? "");
+                $height = nullableNumber($_POST["height"] ?? "");
+
+                $symptoms = trim($_POST["symptoms"] ?? "");
+                $diagnosis = trim($_POST["diagnosis"] ?? "");
+                $treatment = trim($_POST["treatment"] ?? "");
+                $notes = trim($_POST["notes"] ?? "");
+
+                if ($patient_id <= 0 || !validVisitDate($visit_date)) {
+                    $error = "Please select a patient and enter a valid visit date.";
+                } elseif (
+                    $temperature === false ||
+                    $weight === false ||
+                    $height === false
+                ) {
+                    $error = "Temperature, weight, and height must be valid non-negative numbers.";
+                } else {
+
+                    // CHECK PATIENT
+                    $check = $pdo->prepare("
+                        SELECT id
+                        FROM bhw_patients
+                        WHERE id = ?
+                        LIMIT 1
+                    ");
+
+                    $check->execute([$patient_id]);
+
+                    if (!$check->fetch(PDO::FETCH_ASSOC)) {
+                        $error = "Selected patient does not exist.";
+                    } else {
+
+                        // INSERT RECORD
+                        $stmt = $pdo->prepare("
+                            INSERT INTO bhw_health_records
+                            (
+                                patient_id,
+                                bhw_id,
+                                visit_date,
+                                blood_pressure,
+                                temperature,
+                                weight,
+                                height,
+                                symptoms,
+                                diagnosis,
+                                treatment,
+                                notes
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ");
+
+                        $stmt->execute([
+                            $patient_id,
+                            $bhw_id,
+                            $visit_date,
+                            $blood_pressure !== "" ? $blood_pressure : null,
+                            $temperature,
+                            $weight,
+                            $height,
+                            $symptoms !== "" ? $symptoms : null,
+                            $diagnosis !== "" ? $diagnosis : null,
+                            $treatment !== "" ? $treatment : null,
+                            $notes !== "" ? $notes : null
+                        ]);
+
+                        header("Location: health_records.php?success=added");
+                        exit;
+                    }
+                }
+            }
+
+            // =============================================
+            // UPDATE HEALTH RECORD
+            // =============================================
+
+            elseif (isset($_POST["update_record"])) {
+
+                $id = (int) ($_POST["id"] ?? 0);
+                $patient_id = (int) ($_POST["patient_id"] ?? 0);
+                $visit_date = trim($_POST["visit_date"] ?? "");
+
+                $blood_pressure = trim($_POST["blood_pressure"] ?? "");
+                $temperature = nullableNumber($_POST["temperature"] ?? "");
+                $weight = nullableNumber($_POST["weight"] ?? "");
+                $height = nullableNumber($_POST["height"] ?? "");
+
+                $symptoms = trim($_POST["symptoms"] ?? "");
+                $diagnosis = trim($_POST["diagnosis"] ?? "");
+                $treatment = trim($_POST["treatment"] ?? "");
+                $notes = trim($_POST["notes"] ?? "");
+
+                if (
+                    $id <= 0 ||
+                    $patient_id <= 0 ||
+                    !validVisitDate($visit_date)
+                ) {
+                    $error = "Please complete the required fields correctly.";
+                } elseif (
+                    $temperature === false ||
+                    $weight === false ||
+                    $height === false
+                ) {
+                    $error = "Temperature, weight, and height must be valid non-negative numbers.";
+                } else {
+
+                    // CHECK PATIENT
+                    $checkPatient = $pdo->prepare("
+                        SELECT id
+                        FROM bhw_patients
+                        WHERE id = ?
+                        LIMIT 1
+                    ");
+
+                    $checkPatient->execute([$patient_id]);
+
+                    if (!$checkPatient->fetch(PDO::FETCH_ASSOC)) {
+                        $error = "Selected patient does not exist.";
+                    } else {
+
+                        // CHECK RECORD OWNERSHIP
+                        $checkRecord = $pdo->prepare("
+                            SELECT id
+                            FROM bhw_health_records
+                            WHERE id = ? AND bhw_id = ?
+                            LIMIT 1
+                        ");
+
+                        $checkRecord->execute([$id, $bhw_id]);
+
+                        if (!$checkRecord->fetch(PDO::FETCH_ASSOC)) {
+                            $error = "Health record not found or you do not have permission to update it.";
+                        } else {
+
+                            // UPDATE RECORD
+                            $stmt = $pdo->prepare("
+                                UPDATE bhw_health_records
+                                SET
+                                    patient_id = ?,
+                                    visit_date = ?,
+                                    blood_pressure = ?,
+                                    temperature = ?,
+                                    weight = ?,
+                                    height = ?,
+                                    symptoms = ?,
+                                    diagnosis = ?,
+                                    treatment = ?,
+                                    notes = ?
+                                WHERE id = ? AND bhw_id = ?
+                            ");
+
+                            $stmt->execute([
+                                $patient_id,
+                                $visit_date,
+                                $blood_pressure !== "" ? $blood_pressure : null,
+                                $temperature,
+                                $weight,
+                                $height,
+                                $symptoms !== "" ? $symptoms : null,
+                                $diagnosis !== "" ? $diagnosis : null,
+                                $treatment !== "" ? $treatment : null,
+                                $notes !== "" ? $notes : null,
+                                $id,
+                                $bhw_id
+                            ]);
+
+                            header("Location: health_records.php?success=updated");
+                            exit;
+                        }
+                    }
+                }
+            }
+
+            // =============================================
+            // DELETE HEALTH RECORD
+            // =============================================
+
+            elseif (isset($_POST["delete_record"])) {
+
+                $id = (int) ($_POST["id"] ?? 0);
+
+                if ($id <= 0) {
+                    $error = "Invalid health record.";
+                } else {
+
+                    $stmt = $pdo->prepare("
+                        DELETE FROM bhw_health_records
+                        WHERE id = ? AND bhw_id = ?
+                    ");
+
+                    $stmt->execute([$id, $bhw_id]);
+
+                    if ($stmt->rowCount() > 0) {
+                        header("Location: health_records.php?success=deleted");
+                        exit;
+                    } else {
+                        $error = "Health record not found or already deleted.";
+                    }
+                }
+            }
+
+        } catch (PDOException $e) {
+            error_log("BHW Health Records Error: " . $e->getMessage());
+            $error = "Unable to process your request. Please check the database.";
         }
     }
-}
-
-// =============================================
-// UPDATE HEALTH RECORD
-// =============================================
-
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["update_record"])) {
-
-    $id = (int)($_POST["id"] ?? 0);
-    $patient_id = (int)($_POST["patient_id"] ?? 0);
-    $visit_date = $_POST["visit_date"] ?? "";
-    $blood_pressure = trim($_POST["blood_pressure"] ?? "");
-    $temperature = ($_POST["temperature"] ?? "") !== "" ? (float)$_POST["temperature"] : null;
-    $weight = ($_POST["weight"] ?? "") !== "" ? (float)$_POST["weight"] : null;
-    $height = ($_POST["height"] ?? "") !== "" ? (float)$_POST["height"] : null;
-    $symptoms = trim($_POST["symptoms"] ?? "");
-    $diagnosis = trim($_POST["diagnosis"] ?? "");
-    $treatment = trim($_POST["treatment"] ?? "");
-    $notes = trim($_POST["notes"] ?? "");
-
-    if ($id <= 0 || $patient_id <= 0 || $visit_date === "") {
-        $error = "Please complete the required fields.";
-    } else {
-
-        $check = $pdo->prepare("
-            SELECT id FROM bhw_patients WHERE id = ?
-        ");
-        $check->execute([$patient_id]);
-
-        if (!$check->fetch()) {
-            $error = "Selected patient does not exist.";
-        } else {
-
-        $stmt = $pdo->prepare("
-            UPDATE bhw_health_records
-            SET patient_id = ?,
-                visit_date = ?,
-                blood_pressure = ?,
-                temperature = ?,
-                weight = ?,
-                height = ?,
-                symptoms = ?,
-                diagnosis = ?,
-                treatment = ?,
-                notes = ?
-            WHERE id = ? AND bhw_id = ?
-        ");
-
-        $stmt->execute([
-            $patient_id,
-            $visit_date,
-            $blood_pressure ?: null,
-            $temperature,
-            $weight,
-            $height,
-            $symptoms ?: null,
-            $diagnosis ?: null,
-            $treatment ?: null,
-            $notes ?: null,
-            $id,
-            $bhw_id
-        ]);
-
-        header("Location: health_records.php?success=updated");
-        exit;
-        }
-    }
-}
-
-// =============================================
-// DELETE HEALTH RECORD
-// =============================================
-
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["delete_record"])) {
-
-    $id = (int)($_POST["id"] ?? 0);
-
-    $stmt = $pdo->prepare("
-        DELETE FROM bhw_health_records
-        WHERE id = ? AND bhw_id = ?
-    ");
-
-    $stmt->execute([$id, $bhw_id]);
-
-    header("Location: health_records.php?success=deleted");
-    exit;
 }
 
 // =============================================
@@ -187,91 +328,121 @@ $successMessages = [
 ];
 
 if (isset($_GET["success"])) {
-    $message = $successMessages[$_GET["success"]] ?? "";
+    $successKey = $_GET["success"];
+
+    if (isset($successMessages[$successKey])) {
+        $message = $successMessages[$successKey];
+    }
 }
 
 // =============================================
 // FETCH PATIENTS
 // =============================================
 
-$patients = $pdo->query("
-    SELECT id, full_name
-    FROM bhw_patients
-    ORDER BY full_name ASC
-")->fetchAll(PDO::FETCH_ASSOC);
+try {
 
-// =============================================
-// EDIT RECORD
-// =============================================
+    $patients = $pdo->query("
+        SELECT id, full_name
+        FROM bhw_patients
+        ORDER BY full_name ASC
+    ")->fetchAll(PDO::FETCH_ASSOC);
 
-$editRecord = null;
+    // =============================================
+    // EDIT RECORD
+    // =============================================
 
-if (isset($_GET["edit"])) {
+    $editRecord = null;
 
-    $edit_id = (int)$_GET["edit"];
+    if (isset($_GET["edit"])) {
 
-    $stmt = $pdo->prepare("
-        SELECT hr.*, p.full_name
+        $edit_id = (int) $_GET["edit"];
+
+        if ($edit_id > 0) {
+
+            $stmt = $pdo->prepare("
+                SELECT hr.*, p.full_name
+                FROM bhw_health_records hr
+                INNER JOIN bhw_patients p
+                    ON hr.patient_id = p.id
+                WHERE hr.id = ? AND hr.bhw_id = ?
+                LIMIT 1
+            ");
+
+            $stmt->execute([$edit_id, $bhw_id]);
+
+            $editRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+    }
+
+    // =============================================
+    // SEARCH HEALTH RECORDS
+    // =============================================
+
+    $search = trim($_GET["search"] ?? "");
+
+    $sql = "
+        SELECT
+            hr.*,
+            p.full_name,
+            p.age,
+            p.gender
         FROM bhw_health_records hr
-        INNER JOIN bhw_patients p ON hr.patient_id = p.id
-        WHERE hr.id = ? AND hr.bhw_id = ?
-    ");
-
-    $stmt->execute([$edit_id, $bhw_id]);
-    $editRecord = $stmt->fetch(PDO::FETCH_ASSOC);
-}
-
-// =============================================
-// SEARCH RECORDS
-// =============================================
-
-$search = trim($_GET["search"] ?? "");
-
-$sql = "
-    SELECT
-        hr.*,
-        p.full_name,
-        p.age,
-        p.gender
-    FROM bhw_health_records hr
-    INNER JOIN bhw_patients p ON hr.patient_id = p.id
-    WHERE hr.bhw_id = ?
-";
-
-$params = [$bhw_id];
-
-if ($search !== "") {
-
-    $sql .= "
-        AND (
-            p.full_name LIKE ?
-            OR hr.diagnosis LIKE ?
-            OR hr.symptoms LIKE ?
-        )
+        INNER JOIN bhw_patients p
+            ON hr.patient_id = p.id
+        WHERE hr.bhw_id = ?
     ";
 
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-    $params[] = "%$search%";
-}
+    $params = [$bhw_id];
 
-$sql .= " ORDER BY hr.visit_date DESC, hr.id DESC";
+    if ($search !== "") {
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $sql .= "
+            AND (
+                p.full_name LIKE ?
+                OR hr.diagnosis LIKE ?
+                OR hr.symptoms LIKE ?
+            )
+        ";
 
-// =============================================
-// STATISTICS
-// =============================================
+        $keyword = "%" . $search . "%";
 
-$totalRecords = count($records);
+        $params[] = $keyword;
+        $params[] = $keyword;
+        $params[] = $keyword;
+    }
 
-$todayRecords = 0;
+    $sql .= " ORDER BY hr.visit_date DESC, hr.id DESC";
 
-foreach ($records as $record) {
-    if ($record["visit_date"] === date("Y-m-d")) {
-        $todayRecords++;
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // =============================================
+    // STATISTICS
+    // =============================================
+
+    $totalRecords = count($records);
+    $todayRecords = 0;
+
+    foreach ($records as $record) {
+        if ($record["visit_date"] === date("Y-m-d")) {
+            $todayRecords++;
+        }
+    }
+
+} catch (PDOException $e) {
+
+    error_log("BHW Health Records Fetch Error: " . $e->getMessage());
+
+    $patients = $patients ?? [];
+    $records = [];
+    $editRecord = null;
+    $totalRecords = 0;
+    $todayRecords = 0;
+
+    if ($error === "") {
+        $error = "Unable to load health records. Please check your database tables.";
     }
 }
 
@@ -294,7 +465,6 @@ foreach ($records as $record) {
 <div class="min-h-screen">
 
     <!-- HEADER -->
-
     <header class="bg-white border-b border-slate-200 px-6 py-5">
 
         <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between gap-4">
@@ -344,7 +514,7 @@ foreach ($records as $record) {
                 </p>
 
                 <h2 class="text-3xl font-bold mt-2">
-                    <?= $totalRecords ?>
+                    <?= (int) $totalRecords ?>
                 </h2>
             </div>
 
@@ -354,7 +524,7 @@ foreach ($records as $record) {
                 </p>
 
                 <h2 class="text-3xl font-bold text-blue-600 mt-2">
-                    <?= $todayRecords ?>
+                    <?= (int) $todayRecords ?>
                 </h2>
             </div>
 
@@ -368,11 +538,17 @@ foreach ($records as $record) {
                 <?= $editRecord ? "Update Health Record" : "Add Health Record" ?>
             </h2>
 
-            <form method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <form method="POST" action="health_records.php<?= $editRecord ? '?edit=' . (int)$editRecord['id'] : '' ?>"
+                  class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+                <input type="hidden"
+                       name="csrf_token"
+                       value="<?= e($csrfToken) ?>">
 
                 <?php if ($editRecord): ?>
-                    <input type="hidden" name="id"
-                           value="<?= (int)$editRecord["id"] ?>">
+                    <input type="hidden"
+                           name="id"
+                           value="<?= (int) $editRecord["id"] ?>">
                 <?php endif; ?>
 
                 <!-- PATIENT -->
@@ -383,14 +559,15 @@ foreach ($records as $record) {
                         Patient Name *
                     </label>
 
-                    <select name="patient_id" required
+                    <select name="patient_id"
+                            required
                             class="w-full border border-slate-300 rounded-xl px-4 py-3">
 
                         <option value="">Select Patient</option>
 
                         <?php foreach ($patients as $patient): ?>
 
-                            <option value="<?= (int)$patient["id"] ?>"
+                            <option value="<?= (int) $patient["id"] ?>"
                                 <?= (int)($editRecord["patient_id"] ?? 0) === (int)$patient["id"] ? "selected" : "" ?>>
 
                                 <?= e($patient["full_name"]) ?>
@@ -445,6 +622,7 @@ foreach ($records as $record) {
 
                     <input type="number"
                            step="0.1"
+                           min="0"
                            name="temperature"
                            placeholder="Example: 36.5"
                            value="<?= e($editRecord["temperature"] ?? "") ?>"
@@ -593,7 +771,7 @@ foreach ($records as $record) {
                     </p>
                 </div>
 
-                <form method="GET" class="flex gap-2">
+                <form method="GET" action="health_records.php" class="flex gap-2">
 
                     <input type="text"
                            name="search"
@@ -630,7 +808,7 @@ foreach ($records as $record) {
 
                     <tbody class="divide-y divide-slate-100">
 
-                    <?php if ($records): ?>
+                    <?php if (!empty($records)): ?>
 
                         <?php foreach ($records as $record): ?>
 
@@ -674,7 +852,12 @@ foreach ($records as $record) {
                                         </a>
 
                                         <form method="POST"
+                                              action="health_records.php"
                                               onsubmit="return confirm('Are you sure you want to delete this health record?');">
+
+                                            <input type="hidden"
+                                                   name="csrf_token"
+                                                   value="<?= e($csrfToken) ?>">
 
                                             <input type="hidden"
                                                    name="id"
@@ -723,7 +906,6 @@ foreach ($records as $record) {
 
 </div>
 
-</body>
-
 <script src="bhw.js"></script>
+</body>
 </html>

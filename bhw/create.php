@@ -1,10 +1,14 @@
 
 <?php
 // =============================================
-// BHW CREATE ACCOUNT - MYSQLI
+// BHW CREATE ACCOUNT
+// PDO DATABASE CONNECTION
+// Database: barangay_db
 // =============================================
 
-// SESSION CONFIGURATION
+// SESSION SECURITY
+$isHttps = !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off";
+
 session_name("BARANGAY_BHW_REGISTER");
 
 ini_set("session.use_strict_mode", "1");
@@ -14,33 +18,55 @@ ini_set("session.use_trans_sid", "0");
 session_set_cookie_params([
     "lifetime" => 0,
     "path" => "/",
-    "secure" => !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off",
+    "secure" => $isHttps,
     "httponly" => true,
     "samesite" => "Lax"
 ]);
 
 session_start();
 
-mysqli_report(MYSQLI_REPORT_OFF);
+// SECURITY HEADERS
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("X-Content-Type-Options: nosniff");
+header("X-Frame-Options: SAMEORIGIN");
 
-// DATABASE CONNECTION
-require_once __DIR__ . "/database.php";
-
-// VERIFY CONNECTION
-if (!isset($conn) || !($conn instanceof mysqli) || $conn->connect_errno) {
-    error_log("BHW Registration: Database connection unavailable.");
-    http_response_code(500);
-    exit("Database connection error. Please check database.php.");
+// ESCAPE OUTPUT
+function e($value) {
+    return htmlspecialchars(
+        (string)$value,
+        ENT_QUOTES,
+        "UTF-8"
+    );
 }
 
-$conn->set_charset("utf8mb4");
+// =============================================
+// DATABASE CONNECTION
+// Main file: Barangay System/db.php
+// =============================================
 
+require_once __DIR__ . "/../db.php";
+
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    http_response_code(500);
+    exit("Database connection error. Please check the main db.php file.");
+}
+
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+
+// =============================================
 // CSRF TOKEN
+// =============================================
+
 if (empty($_SESSION["csrf_token"])) {
     $_SESSION["csrf_token"] = bin2hex(random_bytes(32));
 }
 
+// =============================================
 // INITIAL VALUES
+// =============================================
+
 $message = "";
 $messageType = "error";
 
@@ -49,7 +75,7 @@ $email = "";
 $contact = "";
 
 // =============================================
-// HANDLE REGISTRATION
+// PROCESS REGISTRATION
 // =============================================
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -62,12 +88,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $token = $_POST["csrf_token"] ?? "";
 
     $fullName = is_string($fullNameInput) ? trim($fullNameInput) : "";
-    $email = is_string($emailInput) ? trim($emailInput) : "";
+    $email = is_string($emailInput) ? strtolower(trim($emailInput)) : "";
     $contact = is_string($contactInput) ? trim($contactInput) : "";
 
     $password = is_string($passwordInput) ? $passwordInput : "";
     $confirmPassword = is_string($confirmInput) ? $confirmInput : "";
 
+    // CSRF CHECK
     if (
         !is_string($token) ||
         !hash_equals($_SESSION["csrf_token"], $token)
@@ -83,7 +110,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $confirmPassword === ""
     ) {
 
-        $message = "Please complete all fields.";
+        $message = "Please complete all required fields.";
 
     } elseif (strlen($fullName) > 150) {
 
@@ -96,11 +123,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $message = "Please enter a valid email address.";
 
-    } elseif (strlen($contact) > 20) {
-
-        $message = "Contact number must not exceed 20 characters.";
-
-    } elseif (!preg_match('/^[0-9+\-\s()]+$/', $contact)) {
+    } elseif (
+        strlen($contact) > 20 ||
+        !preg_match('/^[0-9+\-\s()]+$/', $contact)
+    ) {
 
         $message = "Please enter a valid contact number.";
 
@@ -114,122 +140,97 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     } else {
 
-        // CHECK EXISTING EMAIL
-        $checkSql = "
-            SELECT id
-            FROM bhw_accounts
-            WHERE email = ?
-            LIMIT 1
-        ";
+        try {
 
-        $check = mysqli_prepare($conn, $checkSql);
+            // CHECK DUPLICATE EMAIL
+            $check = $pdo->prepare("
+                SELECT id
+                FROM bhw_accounts
+                WHERE email = :email
+                LIMIT 1
+            ");
 
-        if (!$check) {
+            $check->execute([
+                ":email" => $email
+            ]);
 
-            error_log("BHW Check Error: " . mysqli_error($conn));
-            $message = "Unable to process registration. Please check the database.";
+            if ($check->fetch()) {
 
-        } else {
-
-            mysqli_stmt_bind_param($check, "s", $email);
-
-            if (!mysqli_stmt_execute($check)) {
-
-                error_log("BHW Check Error: " . mysqli_stmt_error($check));
-                $message = "Unable to verify your account. Please try again.";
-                mysqli_stmt_close($check);
+                $message = "This email address is already registered.";
 
             } else {
 
-                mysqli_stmt_bind_result($check, $existingId);
-                $emailExists = mysqli_stmt_fetch($check);
+                // HASH PASSWORD
+                $hashedPassword = password_hash(
+                    $password,
+                    PASSWORD_DEFAULT
+                );
 
-                mysqli_stmt_close($check);
-
-                if ($emailExists) {
-
-                    $message = "This email address is already registered.";
-
-                } else {
-
-                    // HASH PASSWORD
-                    $hashedPassword = password_hash(
-                        $password,
-                        PASSWORD_DEFAULT
-                    );
-
-                    if ($hashedPassword === false) {
-
-                        $message = "Unable to secure your password. Please try again.";
-
-                    } else {
-
-                        // INSERT ACCOUNT
-                        $insertSql = "
-                            INSERT INTO bhw_accounts
-                            (
-                                full_name,
-                                email,
-                                password,
-                                contact_number,
-                                position,
-                                status
-                            )
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        ";
-
-                        $insert = mysqli_prepare($conn, $insertSql);
-
-                        if (!$insert) {
-
-                            error_log("BHW Insert Error: " . mysqli_error($conn));
-                            $message = "Unable to register your account. Please check the database structure.";
-
-                        } else {
-
-                            $position = "Barangay Health Worker";
-                            $status = "Inactive";
-
-                            mysqli_stmt_bind_param(
-                                $insert,
-                                "ssssss",
-                                $fullName,
-                                $email,
-                                $hashedPassword,
-                                $contact,
-                                $position,
-                                $status
-                            );
-
-                            if (mysqli_stmt_execute($insert)) {
-
-                                $message = "Registration successful! Your account is waiting for administrator approval.";
-                                $messageType = "success";
-
-                                $fullName = "";
-                                $email = "";
-                                $contact = "";
-
-                                $_SESSION["csrf_token"] = bin2hex(random_bytes(32));
-
-                            } else {
-
-                                $errorCode = mysqli_stmt_errno($insert);
-
-                                error_log("BHW Insert Error: " . mysqli_stmt_error($insert));
-
-                                if ($errorCode === 1062) {
-                                    $message = "This email address is already registered.";
-                                } else {
-                                    $message = "Unable to register your account. Please try again.";
-                                }
-                            }
-
-                            mysqli_stmt_close($insert);
-                        }
-                    }
+                if ($hashedPassword === false) {
+                    throw new RuntimeException("Password hashing failed.");
                 }
+
+                // INSERT NEW BHW ACCOUNT
+                $insert = $pdo->prepare("
+                    INSERT INTO bhw_accounts
+                    (
+                        full_name,
+                        email,
+                        password,
+                        contact_number,
+                        position,
+                        status
+                    )
+                    VALUES
+                    (
+                        :full_name,
+                        :email,
+                        :password,
+                        :contact_number,
+                        :position,
+                        :status
+                    )
+                ");
+
+                $insert->execute([
+                    ":full_name" => $fullName,
+                    ":email" => $email,
+                    ":password" => $hashedPassword,
+                    ":contact_number" => $contact,
+                    ":position" => "Barangay Health Worker",
+                    ":status" => "Inactive"
+                ]);
+
+                $message = "Registration successful! Your account is waiting for administrator approval.";
+                $messageType = "success";
+
+                // CLEAR FORM
+                $fullName = "";
+                $email = "";
+                $contact = "";
+
+                // NEW CSRF TOKEN
+                $_SESSION["csrf_token"] = bin2hex(random_bytes(32));
             }
+
+        } catch (PDOException $e) {
+
+            error_log("BHW Registration Error: " . $e->getMessage());
+
+            if (
+                $e->getCode() === "23000" ||
+                (isset($e->errorInfo[1]) && (int)$e->errorInfo[1] === 1062)
+            ) {
+                $message = "This email address is already registered.";
+            } else {
+                $message = "Unable to process registration. Please check your database table and columns.";
+            }
+
+        } catch (RuntimeException $e) {
+
+            error_log("BHW Registration Error: " . $e->getMessage());
+
+            $message = "Unable to secure your account. Please try again.";
         }
     }
 }
@@ -237,333 +238,281 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BHW Registration | Barangay Health System</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+<title>BHW Registration | Barangay Health System</title>
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
+<script src="https://cdn.tailwindcss.com"></script>
 
-        .input-field {
-            width: 100%;
-            padding: 12px 14px;
-            border: 1px solid #d1d5db;
-            border-radius: 10px;
-            outline: none;
-            transition: .2s;
-        }
+<style>
+body {
+    font-family: Arial, sans-serif;
+}
 
-        .input-field:focus {
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
-        }
+.input-field {
+    width: 100%;
+    padding: 13px 15px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    outline: none;
+    background: #fff;
+    transition: border-color .2s, box-shadow .2s;
+}
 
-        .password-wrapper {
-            position: relative;
-        }
+.input-field:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
 
-        .password-wrapper input {
-            padding-right: 45px;
-        }
+label {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: white;
+    margin-bottom: 8px;
+}
+</style>
 
-        .toggle-password {
-            position: absolute;
-            right: 14px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #6b7280;
-            cursor: pointer;
-        }
-    </style>
 </head>
 
 <body class="min-h-screen bg-slate-100 flex items-center justify-center p-4">
 
-    <div class="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden grid md:grid-cols-2">
+<div class="w-full max-w-5xl bg-black rounded-2xl shadow-xl overflow-hidden grid md:grid-cols-2">
 
-        <!-- LEFT SIDE -->
-        <div class="hidden md:flex flex-col justify-center bg-blue-700 text-white p-10">
+    <!-- LEFT PANEL -->
 
-            <div class="mb-8">
-                <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6">
-                    <i data-lucide="heart-pulse" class="w-9 h-9"></i>
-                </div>
+    <div class="hidden md:flex flex-col justify-center bg-blue-700 text-white p-10">
 
-                <h1 class="text-3xl font-bold mb-4">
-                    Barangay Health System
-                </h1>
+        <div class="mb-8">
 
-                <p class="text-blue-100 leading-relaxed">
-                    BHW Account Registration Portal. Create your account
-                    to access the Barangay Health Worker system.
-                </p>
+            <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6 text-3xl font-bold">
+                 + 
             </div>
 
-            <div class="space-y-5 mt-6">
+            <h1 class="text-3xl font-bold mb-4">
+                Barangay Health System
+            </h1>
 
-                <div class="flex items-center gap-3">
-                    <i data-lucide="users" class="w-5 h-5"></i>
-                    <span>Manage patient information</span>
-                </div>
-
-                <div class="flex items-center gap-3">
-                    <i data-lucide="calendar-check" class="w-5 h-5"></i>
-                    <span>Manage health appointments</span>
-                </div>
-
-                <div class="flex items-center gap-3">
-                    <i data-lucide="clipboard-list" class="w-5 h-5"></i>
-                    <span>Access health records</span>
-                </div>
-
-            </div>
-
-            <p class="text-sm text-blue-200 mt-16">
-                Barangay Health Worker Management System
+            <p class="text-blue-100 leading-relaxed">
+                BHW Account Registration Portal.
+                Register your account to access the
+                Barangay Health Worker Management System.
             </p>
 
         </div>
 
-        <!-- RIGHT SIDE: REGISTRATION FORM -->
-        <div class="p-6 sm:p-10">
+        <div class="space-y-6 mt-6">
 
-            <div class="mb-7">
-
-                <div class="md:hidden w-12 h-12 bg-blue-100 text-blue-700 rounded-xl flex items-center justify-center mb-4">
-                    <i data-lucide="heart-pulse" class="w-7 h-7"></i>
-                </div>
-
-                <h2 class="text-2xl font-bold text-gray-900">
-                    Create BHW Account
-                </h2>
-
-                <p class="text-gray-500 mt-2 text-sm">
-                    Fill in your information to register.
-                </p>
-
+            <div class="flex items-center gap-4">
+                <span class="text-2xl">👥</span>
+                <span>Manage patient information</span>
             </div>
 
-            <!-- MESSAGE -->
-            <?php if ($message !== ""): ?>
-
-                <div class="mb-5 p-4 rounded-xl text-sm
-                    <?php echo $messageType === "success"
-                        ? "bg-green-50 text-green-700 border border-green-200"
-                        : "bg-red-50 text-red-700 border border-red-200"; ?>">
-
-                    <div class="flex items-start gap-2">
-                        <?php if ($messageType === "success"): ?>
-                            <i data-lucide="check-circle" class="w-5 h-5 shrink-0"></i>
-                        <?php else: ?>
-                            <i data-lucide="alert-circle" class="w-5 h-5 shrink-0"></i>
-                        <?php endif; ?>
-
-                        <span>
-                            <?php echo htmlspecialchars($message, ENT_QUOTES, "UTF-8"); ?>
-                        </span>
-                    </div>
-
-                </div>
-
-            <?php endif; ?>
-
-            <!-- REGISTRATION FORM -->
-            <form method="POST" action="" class="space-y-5">
-
-                <input
-                    type="hidden"
-                    name="csrf_token"
-                    value="<?php echo htmlspecialchars($_SESSION["csrf_token"], ENT_QUOTES, "UTF-8"); ?>"
-                >
-
-                <!-- FULL NAME -->
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Full Name
-                    </label>
-
-                    <div class="relative">
-                        <i data-lucide="user" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
-
-                        <input
-                            type="text"
-                            name="full_name"
-                            class="input-field pl-11"
-                            placeholder="Enter your full name"
-                            value="<?php echo htmlspecialchars($fullName, ENT_QUOTES, "UTF-8"); ?>"
-                            maxlength="150"
-                            autocomplete="name"
-                            required
-                        >
-                    </div>
-                </div>
-
-                <!-- EMAIL -->
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Email Address
-                    </label>
-
-                    <div class="relative">
-                        <i data-lucide="mail" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
-
-                        <input
-                            type="email"
-                            name="email"
-                            class="input-field pl-11"
-                            placeholder="Enter your email"
-                            value="<?php echo htmlspecialchars($email, ENT_QUOTES, "UTF-8"); ?>"
-                            maxlength="150"
-                            autocomplete="email"
-                            required
-                        >
-                    </div>
-                </div>
-
-                <!-- CONTACT NUMBER -->
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Contact Number
-                    </label>
-
-                    <div class="relative">
-                        <i data-lucide="phone" class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"></i>
-
-                        <input
-                            type="tel"
-                            name="contact_number"
-                            class="input-field pl-11"
-                            placeholder="Enter your contact number"
-                            value="<?php echo htmlspecialchars($contact, ENT_QUOTES, "UTF-8"); ?>"
-                            maxlength="20"
-                            autocomplete="tel"
-                            required
-                        >
-                    </div>
-                </div>
-
-                <!-- PASSWORD -->
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Password
-                    </label>
-
-                    <div class="password-wrapper">
-                        <input
-                            type="password"
-                            name="password"
-                            id="password"
-                            class="input-field"
-                            placeholder="Create a password"
-                            minlength="8"
-                            autocomplete="new-password"
-                            required
-                        >
-
-                        <button
-                            type="button"
-                            class="toggle-password"
-                            onclick="togglePassword('password', 'eyePassword')"
-                            aria-label="Show or hide password"
-                        >
-                            <i data-lucide="eye" id="eyePassword" class="w-5 h-5"></i>
-                        </button>
-                    </div>
-
-                    <p class="text-xs text-gray-400 mt-1">
-                        Password must contain at least 8 characters.
-                    </p>
-                </div>
-
-                <!-- CONFIRM PASSWORD -->
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Confirm Password
-                    </label>
-
-                    <div class="password-wrapper">
-                        <input
-                            type="password"
-                            name="confirm_password"
-                            id="confirm_password"
-                            class="input-field"
-                            placeholder="Confirm your password"
-                            minlength="8"
-                            autocomplete="new-password"
-                            required
-                        >
-
-                        <button
-                            type="button"
-                            class="toggle-password"
-                            onclick="togglePassword('confirm_password', 'eyeConfirm')"
-                            aria-label="Show or hide confirm password"
-                        >
-                            <i data-lucide="eye" id="eyeConfirm" class="w-5 h-5"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- SUBMIT -->
-                <button
-                    type="submit"
-                    class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 rounded-xl transition duration-200 flex items-center justify-center gap-2"
-                >
-                    <i data-lucide="user-plus" class="w-5 h-5"></i>
-                    Create Account
-                </button>
-
-            </form>
-
-            <!-- LOGIN LINK -->
-            <div class="text-center mt-6 text-sm text-gray-500">
-                Already have an account?
-
-                <a href="logIn.php" class="text-blue-700 font-semibold hover:underline">
-                    Sign In
-                </a>
+            <div class="flex items-center gap-4">
+                <span class="text-2xl">📅</span>
+                <span>Manage health appointments</span>
             </div>
 
-            <p class="text-center text-xs text-gray-400 mt-7">
-                Your account requires administrator approval before login.
-            </p>
+            <div class="flex items-center gap-4">
+                <span class="text-2xl">📋</span>
+                <span>Maintain health records</span>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <span class="text-2xl">🏥</span>
+                <span>Support barangay healthcare services</span>
+            </div>
 
         </div>
+
+        <p class="text-sm text-blue-200 mt-16">
+            Barangay Health Worker Management System
+        </p>
 
     </div>
 
-    <script>
-        function togglePassword(inputId, iconId) {
-            const input = document.getElementById(inputId);
-            const icon = document.getElementById(iconId);
+    <!-- RIGHT PANEL -->
 
-            if (!input || !icon) return;
+    <div class="p-6 sm:p-10">
 
-            if (input.type === "password") {
-                input.type = "text";
-                icon.setAttribute("data-lucide", "eye-off");
-            } else {
-                input.type = "password";
-                icon.setAttribute("data-lucide", "eye");
-            }
+        <div class="mb-7">
 
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-        }
+            <div class="md:hidden w-12 h-12 bg-blue-100 text-blue-700 rounded-xl flex items-center justify-center mb-4 text-2xl font-bold">
+                +
+            </div>
 
-        document.addEventListener("DOMContentLoaded", function () {
-            if (window.lucide) {
-                lucide.createIcons();
-            }
-        });
-    </script>
+            <h2 class="text-3xl font-bold text-white">
+                Create BHW Account
+            </h2>
+
+            <p class="text-white text-sm">
+                Fill in your information to register.
+            </p>
+
+        </div>
+
+        <!-- ALERT MESSAGE -->
+
+        <?php if ($message !== ""): ?>
+
+            <div class="mb-5 p-4 rounded-xl text-sm border
+                <?= $messageType === "success"
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-red-50 text-red-700 border-red-200"; ?>">
+
+                <?= e($message) ?>
+
+            </div>
+
+        <?php endif; ?>
+
+        <!-- REGISTRATION FORM -->
+
+        <form method="POST" action="" class="space-y-5">
+
+            <input
+                type="hidden"
+                name="csrf_token"
+                value="<?= e($_SESSION["csrf_token"]) ?>"
+            >
+
+            <div>
+
+                <label for="full_name">
+                    Full Name
+                </label>
+
+                <input
+                    type="text"
+                    id="full_name"
+                    name="full_name"
+                    class="input-field"
+                    placeholder="Enter your full name"
+                    value="<?= e($fullName) ?>"
+                    maxlength="150"
+                    autocomplete="name"
+                    required
+                >
+
+            </div>
+
+            <div>
+
+                <label for="email">
+                    Email Address
+                </label>
+
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    class="input-field"
+                    placeholder="Enter your email address"
+                    value="<?= e($email) ?>"
+                    maxlength="150"
+                    autocomplete="email"
+                    required
+                >
+
+            </div>
+
+            <div>
+
+                <label for="contact_number">
+                    Contact Number
+                </label>
+
+                <input
+                    type="tel"
+                    id="contact_number"
+                    name="contact_number"
+                    class="input-field"
+                    placeholder="Enter your contact number"
+                    value="<?= e($contact) ?>"
+                    maxlength="20"
+                    autocomplete="tel"
+                    required
+                >
+
+            </div>
+
+            <div>
+
+                <label for="password">
+                    Password
+                </label>
+
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    class="input-field"
+                    placeholder="Create a password"
+                    minlength="8"
+                    autocomplete="new-password"
+                    required
+                >
+
+                <p class="text-xs text-gray-400 mt-2">
+                    Password must contain at least 8 characters.
+                </p>
+
+            </div>
+
+            <div>
+
+                <label for="confirm_password">
+                    Confirm Password
+                </label>
+
+                <input
+                    type="password"
+                    id="confirm_password"
+                    name="confirm_password"
+                    class="input-field"
+                    placeholder="Confirm your password"
+                    minlength="8"
+                    autocomplete="new-password"
+                    required
+                >
+
+            </div>
+
+            <button
+                type="submit"
+                class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 rounded-xl transition duration-200"
+            >
+                Create Account
+            </button>
+
+        </form>
+
+        <!-- LOGIN LINK -->
+
+        <div class="text-center mt-6 text-sm text-white">
+
+            Already have an account
+
+            <a
+                href="logIn.php"
+                class="text-blue-700 font-semibold hover:underline"
+            >
+                Sign In
+            </a>
+
+        </div>
+
+        <p class="text-center text-xs text-gray-400 mt-7">
+            Your account requires administrator approval before login.
+        </p>
+
+    </div>
+
+</div>
 
 </body>
 </html>
+s

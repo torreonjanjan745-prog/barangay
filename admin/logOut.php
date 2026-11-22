@@ -1,7 +1,7 @@
 
 <?php
 // ============================================
-// ADMIN LOGOUT - SESSION SECURITY
+// ADMIN LOGOUT - SECURE SESSION DESTRUCTION
 // ============================================
 
 $isHttps = (
@@ -16,6 +16,7 @@ ini_set("session.use_only_cookies", "1");
 ini_set("session.use_trans_sid", "0");
 
 if (session_status() === PHP_SESSION_NONE) {
+
     session_set_cookie_params([
         "lifetime" => 0,
         "path" => "/",
@@ -28,16 +29,17 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // ============================================
-// ONLY ALLOW POST REQUEST
+// ONLY POST REQUEST
 // ============================================
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-    header("Location: dashboard.php");
-    exit();
+
+    header("Location: /Barangay%20System/admin/dashboard.php");
+    exit;
 }
 
 // ============================================
-// VERIFY LOGOUT CSRF TOKEN
+// VERIFY CSRF TOKEN
 // ============================================
 
 $csrf = $_POST["csrf_token"] ?? "";
@@ -47,8 +49,9 @@ if (
     empty($_SESSION["admin_logout_csrf"]) ||
     !hash_equals($_SESSION["admin_logout_csrf"], $csrf)
 ) {
+
     http_response_code(403);
-    exit("Invalid logout request.");
+    exit("Invalid logout request. Please refresh the dashboard.");
 }
 
 // ============================================
@@ -62,6 +65,7 @@ $_SESSION = [];
 // ============================================
 
 if (ini_get("session.use_cookies")) {
+
     $params = session_get_cookie_params();
 
     setcookie(session_name(), "", [
@@ -81,8 +85,8 @@ if (ini_get("session.use_cookies")) {
 session_destroy();
 
 // ============================================
-// REDIRECT TO ADMIN LOGIN
+// REDIRECT TO LOGIN
 // ============================================
 
-header("Location: login.php?logged_out=1");
-exit();
+header("Location: /Barangay System/admin/logOut.php");
+exit;

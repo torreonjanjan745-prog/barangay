@@ -1,18 +1,24 @@
 
 <?php
-// ============================================
-// ADMIN SESSION SECURITY
-// ============================================
+// =====================================================
+// BARANGAY GUINDACPAN - ADMINISTRATOR DASHBOARD
+// PHP + PDO + TAILWIND CSS
+// NO CUSTOM JAVASCRIPT
+// =====================================================
+
+// =====================================================
+// SESSION SECURITY
+// =====================================================
 
 $isHttps = isset($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off";
 
-session_name("BARANGAY_ADMIN_SESSION");
-
-ini_set("session.use_strict_mode", "1");
-ini_set("session.use_only_cookies", "1");
-ini_set("session.use_trans_sid", "0");
-
 if (session_status() === PHP_SESSION_NONE) {
+    session_name("BARANGAY_ADMIN_SESSION");
+
+    ini_set("session.use_strict_mode", "1");
+    ini_set("session.use_only_cookies", "1");
+    ini_set("session.use_trans_sid", "0");
+
     session_set_cookie_params([
         "lifetime" => 0,
         "path" => "/",
@@ -24,9 +30,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// ============================================
+// =====================================================
 // SECURITY HEADERS
-// ============================================
+// =====================================================
 
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
@@ -34,30 +40,25 @@ header("X-Content-Type-Options: nosniff");
 header("X-Frame-Options: DENY");
 header("Referrer-Policy: no-referrer");
 
-// ============================================
-// DATABASE CONNECTION
-// ============================================
-
-require_once __DIR__ . "/../db.php";
-
-// ============================================
+// =====================================================
 // ADMIN AUTHENTICATION
-// ============================================
+// =====================================================
 
 if (empty($_SESSION["admin_id"])) {
-    header("Location: login.php");
+    header("Location: adminlogIn.php");
     exit();
 }
 
-// ============================================
-// SESSION TIMEOUT
-// ============================================
+// =====================================================
+// SESSION TIMEOUT - 30 MINUTES
+// =====================================================
 
 $timeout = 1800;
+$now = time();
 
 if (
-    !isset($_SESSION["admin_last_activity"]) ||
-    (time() - $_SESSION["admin_last_activity"]) > $timeout
+    isset($_SESSION["admin_last_activity"]) &&
+    ($now - (int)$_SESSION["admin_last_activity"]) > $timeout
 ) {
     $_SESSION = [];
 
@@ -65,36 +66,60 @@ if (
         $params = session_get_cookie_params();
 
         setcookie(session_name(), "", [
-            "expires" => time() - 42000,
+            "expires" => $now - 42000,
             "path" => $params["path"],
             "domain" => $params["domain"],
             "secure" => $params["secure"],
-            "httponly" => $params["httponly"],
+            "httponly" => true,
             "samesite" => "Strict"
         ]);
     }
 
     session_destroy();
 
-    header("Location: login.php?expired=1");
+    header("Location: adminlogIn.php?expired=1");
     exit();
 }
 
-$_SESSION["admin_last_activity"] = time();
+$_SESSION["admin_last_activity"] = $now;
 
-// ============================================
+// =====================================================
+// DATABASE CONNECTION - PDO
+// Main database: barangay_db
+// =====================================================
+
+require_once __DIR__ . "/../db.php";
+
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    error_log("Administrator Dashboard: Invalid PDO connection.");
+    http_response_code(500);
+    exit("Administrator database connection is not available.");
+}
+
+try {
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $pdo->query("SELECT 1");
+} catch (PDOException $ex) {
+    error_log("Administrator Dashboard Connection Error: " . $ex->getMessage());
+    http_response_code(500);
+    exit("Administrator database connection failed.");
+}
+
+// =====================================================
 // CSRF TOKEN
-// ============================================
+// =====================================================
 
 if (empty($_SESSION["admin_logout_csrf"])) {
     $_SESSION["admin_logout_csrf"] = bin2hex(random_bytes(32));
 }
 
-// ============================================
-// HELPER
-// ============================================
+// =====================================================
+// ESCAPE OUTPUT
+// =====================================================
 
-function e($value) {
+function e($value): string
+{
     return htmlspecialchars(
         (string)$value,
         ENT_QUOTES | ENT_SUBSTITUTE,
@@ -102,99 +127,139 @@ function e($value) {
     );
 }
 
-// ============================================
+// =====================================================
 // ADMIN INFORMATION
-// ============================================
+// =====================================================
 
 $adminName = $_SESSION["admin_name"] ?? "Administrator";
+$initial = strtoupper(substr(trim($adminName), 0, 1));
 
-// ============================================
-// DEFAULT VALUES
-// ============================================
+if ($initial === "") {
+    $initial = "A";
+}
+
+// =====================================================
+// DEFAULT STATISTICS
+// =====================================================
 
 $totalResidents = 0;
 $pendingResidents = 0;
 $approvedResidents = 0;
+$rejectedResidents = 0;
+
 $recentResidents = [];
-$statusAvailable = false;
 $errorMessage = "";
 
-// ============================================
-// DATABASE INFORMATION
-// ============================================
+// =====================================================
+// RESIDENT SEARCH - PHP ONLY
+// =====================================================
+
+$search = trim($_GET["search"] ?? "");
+
+if (strlen($search) > 100) {
+    $search = substr($search, 0, 100);
+}
+
+// =====================================================
+// DATABASE QUERIES
+// =====================================================
 
 try {
 
-    $countResult = mysqli_query(
-        $conn,
-        "SELECT COUNT(*) AS total FROM residents"
-    );
+    // RESIDENT STATISTICS
 
-    if (!$countResult) {
-        throw new Exception(mysqli_error($conn));
+    $statsQuery = "
+        SELECT
+            COUNT(*) AS total,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN LOWER(COALESCE(status, '')) = 'pending'
+                        THEN 1 ELSE 0
+                    END
+                ), 0
+            ) AS pending,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN LOWER(COALESCE(status, '')) = 'approved'
+                        THEN 1 ELSE 0
+                    END
+                ), 0
+            ) AS approved,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN LOWER(COALESCE(status, '')) = 'rejected'
+                        THEN 1 ELSE 0
+                    END
+                ), 0
+            ) AS rejected
+
+        FROM residents
+    ";
+
+    $statsResult = $pdo->query($statsQuery);
+    $stats = $statsResult->fetch();
+
+    $totalResidents = (int)($stats["total"] ?? 0);
+    $pendingResidents = (int)($stats["pending"] ?? 0);
+    $approvedResidents = (int)($stats["approved"] ?? 0);
+    $rejectedResidents = (int)($stats["rejected"] ?? 0);
+
+    // RECENT RESIDENTS
+    // Password is intentionally excluded.
+
+    $recentQuery = "
+        SELECT
+            id,
+            full_name,
+            username,
+            purok_address,
+            status,
+            created_at
+
+        FROM residents
+    ";
+
+    if ($search !== "") {
+        $recentQuery .= "
+            WHERE
+                full_name LIKE :search_name
+                OR username LIKE :search_username
+                OR purok_address LIKE :search_address
+                OR CAST(id AS CHAR) LIKE :search_id
+        ";
     }
 
-    $countRow = mysqli_fetch_assoc($countResult);
-    $totalResidents = (int)$countRow["total"];
+    $recentQuery .= "
+        ORDER BY id DESC
+        LIMIT 8
+    ";
 
-    // Detect available columns
-    $columnsResult = mysqli_query(
-        $conn,
-        "SHOW COLUMNS FROM residents"
-    );
+    $recentStmt = $pdo->prepare($recentQuery);
 
-    if (!$columnsResult) {
-        throw new Exception(mysqli_error($conn));
+    if ($search !== "") {
+        $searchValue = "%" . $search . "%";
+
+        $recentStmt->bindValue(":search_name", $searchValue, PDO::PARAM_STR);
+        $recentStmt->bindValue(":search_username", $searchValue, PDO::PARAM_STR);
+        $recentStmt->bindValue(":search_address", $searchValue, PDO::PARAM_STR);
+        $recentStmt->bindValue(":search_id", $searchValue, PDO::PARAM_STR);
     }
 
-    $columns = [];
-
-    while ($column = mysqli_fetch_assoc($columnsResult)) {
-        $columns[] = $column["Field"];
-    }
-
-    $statusAvailable = in_array("status", $columns, true);
-
-    // Resident status counts
-    if ($statusAvailable) {
-
-        $statusResult = mysqli_query(
-            $conn,
-            "SELECT
-                SUM(CASE WHEN LOWER(status) = 'pending' THEN 1 ELSE 0 END) AS pending,
-                SUM(CASE WHEN LOWER(status) = 'approved' THEN 1 ELSE 0 END) AS approved
-             FROM residents"
-        );
-
-        if (!$statusResult) {
-            throw new Exception(mysqli_error($conn));
-        }
-
-        $statusRow = mysqli_fetch_assoc($statusResult);
-
-        $pendingResidents = (int)($statusRow["pending"] ?? 0);
-        $approvedResidents = (int)($statusRow["approved"] ?? 0);
-    }
-
-    // Recent residents
-    $recentResult = mysqli_query(
-        $conn,
-        "SELECT * FROM residents ORDER BY id DESC LIMIT 8"
-    );
-
-    if (!$recentResult) {
-        throw new Exception(mysqli_error($conn));
-    }
-
-    while ($row = mysqli_fetch_assoc($recentResult)) {
-        $recentResidents[] = $row;
-    }
+    $recentStmt->execute();
+    $recentResidents = $recentStmt->fetchAll();
 
 } catch (Throwable $ex) {
 
-    error_log("Dashboard Error: " . $ex->getMessage());
+    error_log("Administrator Dashboard Query Error: " . $ex->getMessage());
 
-    $errorMessage = "Unable to load resident information. Please check your database.";
+    $errorMessage = "Unable to load dashboard information. Please check your database tables and columns.";
+
 }
 
 ?>
@@ -207,13 +272,18 @@ try {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Admin Dashboard | Barangay Guindacpan</title>
+<title>Administrator Dashboard | Barangay Guindacpan</title>
 
+<!-- TAILWIND CSS CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
 
+<!-- GOOGLE FONT -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
 
 <style>
 
@@ -221,8 +291,13 @@ try {
     font-family: 'Inter', sans-serif;
 }
 
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 100px;
+}
+
 body {
-    background: #f8fafc;
+    background: #f6f8f7;
 }
 
 .sidebar {
@@ -235,10 +310,10 @@ body {
     gap: 13px;
     padding: 13px 15px;
     border-radius: 12px;
-    color: #94a3b8;
-    font-size: 14px;
-    font-weight: 500;
-    transition: .2s;
+    color: #a1a1aa;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background .2s ease, color .2s ease;
 }
 
 .nav-link:hover {
@@ -249,7 +324,6 @@ body {
 .nav-link.active {
     background: #166534;
     color: white;
-    box-shadow: 0 5px 15px rgba(22,101,52,.2);
 }
 
 .nav-link svg {
@@ -259,16 +333,30 @@ body {
 }
 
 .stat-card {
-    transition: all .25s ease;
+    transition: transform .25s ease, box-shadow .25s ease;
 }
 
 .stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 15px 30px rgba(15,23,42,.07);
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px rgba(15,23,42,.08);
 }
 
-#overlay {
-    transition: opacity .3s ease;
+.resident-row {
+    transition: background .2s ease;
+}
+
+#sidebarToggle:checked ~ #adminSidebar {
+    transform: translateX(0);
+}
+
+#sidebarToggle:checked ~ #sidebarOverlay {
+    display: block;
+}
+
+@media (min-width: 1024px) {
+    #sidebarOverlay {
+        display: none !important;
+    }
 }
 
 </style>
@@ -279,30 +367,37 @@ body {
 
 <div class="min-h-screen">
 
-<!-- MOBILE OVERLAY -->
+<!-- =================================================
+     CSS-ONLY MOBILE SIDEBAR CONTROL
+================================================== -->
 
-<div id="overlay"
-     class="fixed inset-0 bg-slate-950/60 z-40 hidden lg:hidden"
-     onclick="closeSidebar()">
-</div>
+<input
+    type="checkbox"
+    id="sidebarToggle"
+    class="hidden"
+    aria-label="Toggle sidebar">
 
 
-<!-- SIDEBAR -->
+<!-- =================================================
+     SIDEBAR
+================================================== -->
 
-<aside id="adminSidebar"
-       class="sidebar fixed inset-y-0 left-0 z-50 w-72 bg-slate-950 text-white flex flex-col -translate-x-full lg:translate-x-0">
+<aside
+    id="adminSidebar"
+    class="sidebar fixed inset-y-0 left-0 z-50 w-72 bg-slate-950 text-white flex flex-col -translate-x-full lg:translate-x-0">
 
-    <!-- LOGO -->
+    <!-- BRAND -->
 
     <div class="px-6 py-7 border-b border-slate-800">
 
         <div class="flex items-center gap-3">
 
-            <div class="w-12 h-12 rounded-2xl bg-green-700 flex items-center justify-center text-2xl">
+            <div class="w-12 h-12 rounded-2xl bg-green-700 flex items-center justify-center text-2xl shadow-lg">
                 🏛️
             </div>
 
             <div>
+
                 <h1 class="text-lg font-extrabold tracking-tight">
                     Barangay
                 </h1>
@@ -310,6 +405,7 @@ body {
                 <p class="text-green-400 text-sm font-semibold">
                     Guindacpan
                 </p>
+
             </div>
 
         </div>
@@ -326,71 +422,52 @@ body {
     <nav class="flex-1 px-4 py-7 overflow-y-auto">
 
         <p class="text-[10px] uppercase tracking-[2px] font-bold text-slate-500 px-3 mb-4">
-            Workspace
+            Main Menu
         </p>
 
         <div class="space-y-2">
 
             <a href="#overview" class="nav-link active">
-
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <rect x="3" y="3" width="7" height="7" rx="1"/>
                     <rect x="14" y="3" width="7" height="7" rx="1"/>
                     <rect x="14" y="14" width="7" height="7" rx="1"/>
                     <rect x="3" y="14" width="7" height="7" rx="1"/>
                 </svg>
-
-                Overview
-
+                Dashboard
             </a>
 
-
             <a href="#residents" class="nav-link">
-
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="9" cy="8" r="4"/>
                     <path d="M2 21a7 7 0 0 1 14 0"/>
                     <path d="M16 4a4 4 0 0 1 0 8M18 14a7 7 0 0 1 4 7"/>
                 </svg>
-
                 Residents
-
             </a>
 
-
             <a href="#verification" class="nav-link">
-
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="9"/>
                     <path d="m8 12 3 3 5-6"/>
                 </svg>
-
                 Account Verification
-
             </a>
 
-
             <a href="#requests" class="nav-link">
-
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M5 3h14v18H5z"/>
                     <path d="M8 8h8M8 12h8M8 16h5"/>
                 </svg>
-
                 Document Requests
-
             </a>
 
-
             <a href="#announcements" class="nav-link">
-
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M3 11v2h3l12 5V6L6 11z"/>
                     <path d="M6 13l2 7h4l-2-5"/>
                 </svg>
-
                 Announcements
-
             </a>
 
         </div>
@@ -402,15 +479,12 @@ body {
 
         <div class="space-y-2">
 
-            <a href="#overview" class="nav-link">
-
+            <a href="#systemInfo" class="nav-link">
                 <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="3"/>
                     <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.5 2.6-.2-.1a1.7 1.7 0 0 0-1.9.3l-.1.1h-3l-.1-.2a1.7 1.7 0 0 0-1.5-1l-.2.1-2.6-1.5.1-.2a1.7 1.7 0 0 0-.3-1.9l-.1-.1v-3l.2-.1a1.7 1.7 0 0 0 1-1.5l-.1-.2 1.5-2.6.2.1a1.7 1.7 0 0 0 1.9-.3l.1-.1h3l.1.2a1.7 1.7 0 0 0 1.5 1l.2-.1 2.6 1.5-.1.2a1.7 1.7 0 0 0 .3 1.9l.1.1z"/>
                 </svg>
-
-                Settings
-
+                System Information
             </a>
 
         </div>
@@ -425,30 +499,33 @@ body {
         <div class="flex items-center gap-3 mb-4">
 
             <div class="w-10 h-10 rounded-xl bg-green-700 flex items-center justify-center font-bold">
-                <?= e(strtoupper(substr($adminName, 0, 1))) ?>
+                <?= e($initial) ?>
             </div>
 
             <div class="min-w-0">
+
                 <p class="text-sm font-semibold truncate">
                     <?= e($adminName) ?>
                 </p>
 
                 <p class="text-xs text-slate-500">
-                    Administrator
+                    System Administrator
                 </p>
+
             </div>
 
         </div>
 
-
         <form action="logout.php" method="POST">
 
-            <input type="hidden"
-                   name="csrf_token"
-                   value="<?= e($_SESSION["admin_logout_csrf"]) ?>">
+            <input
+                type="hidden"
+                name="csrf_token"
+                value="<?= e($_SESSION["admin_logout_csrf"]) ?>">
 
-            <button type="submit"
-                    class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition text-sm font-semibold">
+            <button
+                type="submit"
+                class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 transition text-sm font-semibold">
 
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path d="M10 17l5-5-5-5"/>
@@ -467,10 +544,21 @@ body {
 </aside>
 
 
-<!-- MAIN CONTENT -->
+<!-- MOBILE OVERLAY -->
+
+<label
+    id="sidebarOverlay"
+    for="sidebarToggle"
+    class="fixed inset-0 bg-slate-950/60 z-40 hidden lg:hidden"
+    aria-label="Close sidebar">
+</label>
+
+
+<!-- =================================================
+     MAIN CONTENT
+================================================== -->
 
 <main class="min-h-screen lg:ml-72">
-
 
     <!-- TOPBAR -->
 
@@ -480,34 +568,36 @@ body {
 
             <div class="flex items-center gap-4">
 
-                <button onclick="openSidebar()"
-                        class="lg:hidden p-2 rounded-xl hover:bg-slate-100"
-                        aria-label="Open sidebar">
+                <label
+                    for="sidebarToggle"
+                    class="lg:hidden p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
+                    aria-label="Open sidebar">
 
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path d="M4 6h16M4 12h16M4 18h16"/>
                     </svg>
 
-                </button>
+                </label>
 
                 <div>
+
                     <p class="text-xs text-slate-400 font-medium">
                         Barangay Guindacpan / Administration
                     </p>
 
                     <h2 class="font-bold text-lg md:text-xl text-slate-900">
-                        Dashboard
+                        Dashboard Overview
                     </h2>
+
                 </div>
 
             </div>
-
 
             <div class="flex items-center gap-3">
 
                 <div class="hidden sm:block text-right">
 
-                    <p class="text-sm font-bold">
+                    <p class="text-sm font-bold text-slate-800">
                         <?= e($adminName) ?>
                     </p>
 
@@ -518,7 +608,7 @@ body {
                 </div>
 
                 <div class="w-10 h-10 rounded-full bg-green-100 text-green-800 flex items-center justify-center font-bold">
-                    <?= e(strtoupper(substr($adminName, 0, 1))) ?>
+                    <?= e($initial) ?>
                 </div>
 
             </div>
@@ -528,14 +618,13 @@ body {
     </header>
 
 
-    <!-- DASHBOARD CONTENT -->
+    <!-- PAGE CONTENT -->
 
     <div class="p-5 md:p-8 max-w-[1600px] mx-auto">
 
-
         <!-- WELCOME BANNER -->
 
-        <section id="overview" class="mb-8">
+        <section id="overview" class="mb-9">
 
             <div class="relative overflow-hidden rounded-3xl bg-gradient-to-r from-green-950 via-green-900 to-emerald-800 p-7 md:p-10 text-white shadow-xl">
 
@@ -554,15 +643,15 @@ body {
                     </h1>
 
                     <p class="text-green-100/80 mt-3 text-sm md:text-base leading-relaxed">
-                        Monitor resident registrations, manage barangay information,
-                        and keep your community organized in one place.
+                        Manage resident information, monitor registrations,
+                        and oversee barangay services through your administration dashboard.
                     </p>
 
-                    <a href="#residents"
-                       class="inline-flex items-center gap-2 mt-6 bg-white text-green-900 px-5 py-3 rounded-xl text-sm font-bold hover:bg-green-50 transition">
+                    <a
+                        href="#residents"
+                        class="inline-flex items-center gap-2 mt-6 bg-white text-green-900 px-5 py-3 rounded-xl text-sm font-bold hover:bg-green-50 transition">
 
-                        View Residents
-
+                        Explore Residents
                         <span>→</span>
 
                     </a>
@@ -582,7 +671,7 @@ body {
 
         <?php if ($errorMessage !== ""): ?>
 
-            <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-2xl mb-6">
+            <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-2xl mb-6 text-sm">
                 <?= e($errorMessage) ?>
             </div>
 
@@ -596,32 +685,35 @@ body {
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
 
                 <div>
+
                     <h2 class="text-xl font-extrabold text-slate-900">
                         Overview Statistics
                     </h2>
 
                     <p class="text-sm text-slate-400 mt-1">
-                        A quick look at your resident records
+                        Monitor the current status of resident accounts.
                     </p>
+
                 </div>
 
                 <span class="text-xs text-slate-400">
-                    Updated when this page loads
+                    <span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+                    Database records on page load
                 </span>
 
             </div>
 
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
 
-
-                <!-- TOTAL RESIDENTS -->
+                <!-- TOTAL -->
 
                 <div class="stat-card bg-white border border-slate-200 rounded-2xl p-6">
 
                     <div class="flex items-center justify-between">
 
                         <div>
+
                             <p class="text-sm font-medium text-slate-500">
                                 Total Residents
                             </p>
@@ -629,6 +721,7 @@ body {
                             <h3 class="text-4xl font-extrabold text-slate-900 mt-3">
                                 <?= number_format($totalResidents) ?>
                             </h3>
+
                         </div>
 
                         <div class="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl">
@@ -638,7 +731,7 @@ body {
                     </div>
 
                     <p class="text-xs text-slate-400 mt-5">
-                        Registered resident accounts
+                        All registered resident accounts
                     </p>
 
                 </div>
@@ -651,13 +744,15 @@ body {
                     <div class="flex items-center justify-between">
 
                         <div>
+
                             <p class="text-sm font-medium text-slate-500">
                                 Pending Accounts
                             </p>
 
                             <h3 class="text-4xl font-extrabold text-amber-500 mt-3">
-                                <?= $statusAvailable ? number_format($pendingResidents) : "—" ?>
+                                <?= number_format($pendingResidents) ?>
                             </h3>
+
                         </div>
 
                         <div class="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl">
@@ -680,13 +775,15 @@ body {
                     <div class="flex items-center justify-between">
 
                         <div>
+
                             <p class="text-sm font-medium text-slate-500">
                                 Approved Accounts
                             </p>
 
                             <h3 class="text-4xl font-extrabold text-green-600 mt-3">
-                                <?= $statusAvailable ? number_format($approvedResidents) : "—" ?>
+                                <?= number_format($approvedResidents) ?>
                             </h3>
+
                         </div>
 
                         <div class="w-14 h-14 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center text-2xl">
@@ -701,6 +798,37 @@ body {
 
                 </div>
 
+
+                <!-- REJECTED -->
+
+                <div class="stat-card bg-white border border-slate-200 rounded-2xl p-6">
+
+                    <div class="flex items-center justify-between">
+
+                        <div>
+
+                            <p class="text-sm font-medium text-slate-500">
+                                Rejected Accounts
+                            </p>
+
+                            <h3 class="text-4xl font-extrabold text-red-500 mt-3">
+                                <?= number_format($rejectedResidents) ?>
+                            </h3>
+
+                        </div>
+
+                        <div class="w-14 h-14 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center text-2xl">
+                            ✕
+                        </div>
+
+                    </div>
+
+                    <p class="text-xs text-slate-400 mt-5">
+                        Rejected resident registrations
+                    </p>
+
+                </div>
+
             </div>
 
         </section>
@@ -708,7 +836,9 @@ body {
 
         <!-- RESIDENT TABLE -->
 
-        <section id="residents" class="bg-white border border-slate-200 rounded-2xl shadow-sm mb-8">
+        <section
+            id="residents"
+            class="bg-white border border-slate-200 rounded-2xl shadow-sm mb-8">
 
             <div class="p-6 border-b border-slate-100">
 
@@ -721,47 +851,87 @@ body {
                         </h2>
 
                         <p class="text-sm text-slate-400 mt-1">
-                            Latest resident registrations
+                            Latest resident registrations from your database.
                         </p>
 
                     </div>
 
 
-                    <div class="relative">
+                    <!-- PHP SEARCH FORM -->
 
-                        <svg class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <form
+                        action="dashboard.php"
+                        method="GET"
+                        class="flex flex-col sm:flex-row gap-2">
 
-                            <circle cx="11" cy="11" r="7"/>
-                            <path d="m20 20-4-4"/>
+                        <input
+                            type="search"
+                            name="search"
+                            value="<?= e($search) ?>"
+                            maxlength="100"
+                            placeholder="Search residents..."
+                            class="w-full md:w-72 px-4 py-3 rounded-xl border border-slate-200 text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100">
 
-                        </svg>
+                        <button
+                            type="submit"
+                            class="px-5 py-3 rounded-xl bg-green-700 hover:bg-green-800 text-white text-sm font-bold transition">
 
-                        <input type="text"
-                               id="residentSearch"
-                               placeholder="Search residents..."
-                               class="w-full md:w-64 pl-10 pr-4 py-3 rounded-xl border border-slate-200 text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100">
+                            Search
 
-                    </div>
+                        </button>
+
+                        <?php if ($search !== ""): ?>
+
+                            <a
+                                href="dashboard.php"
+                                class="px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-bold text-center transition">
+
+                                Clear
+
+                            </a>
+
+                        <?php endif; ?>
+
+                    </form>
 
                 </div>
 
             </div>
 
 
+            <!-- TABLE -->
+
             <div class="overflow-x-auto">
 
-                <table class="w-full min-w-[700px] text-left" id="residentTable">
+                <table class="w-full min-w-[850px] text-left">
 
                     <thead class="bg-slate-50">
 
                         <tr class="text-xs uppercase tracking-wider text-slate-400">
 
-                            <th class="py-4 px-6 font-semibold">ID</th>
-                            <th class="py-4 px-6 font-semibold">Resident Name</th>
-                            <th class="py-4 px-6 font-semibold">Username</th>
-                            <th class="py-4 px-6 font-semibold">Address</th>
-                            <th class="py-4 px-6 font-semibold">Status</th>
+                            <th class="py-4 px-6 font-semibold">
+                                Resident ID
+                            </th>
+
+                            <th class="py-4 px-6 font-semibold">
+                                Resident Name
+                            </th>
+
+                            <th class="py-4 px-6 font-semibold">
+                                Username
+                            </th>
+
+                            <th class="py-4 px-6 font-semibold">
+                                Address
+                            </th>
+
+                            <th class="py-4 px-6 font-semibold">
+                                Registration
+                            </th>
+
+                            <th class="py-4 px-6 font-semibold">
+                                Status
+                            </th>
 
                         </tr>
 
@@ -776,40 +946,52 @@ body {
 
                             <?php
 
-                            $name = $person["full_name"]
-                                ?? $person["fullName"]
-                                ?? "N/A";
-
-                            $address = $person["purok_address"]
-                                ?? $person["address"]
-                                ?? "N/A";
-
+                            $name = $person["full_name"] ?? "N/A";
+                            $address = $person["purok_address"] ?? "N/A";
                             $status = $person["status"] ?? "Not set";
 
-                            $statusLower = strtolower(trim($status));
+                            $statusLower = strtolower(trim((string)$status));
+
+                            $badgeClass = "bg-slate-100 text-slate-600";
 
                             if ($statusLower === "approved") {
                                 $badgeClass = "bg-green-50 text-green-700";
                             } elseif ($statusLower === "rejected") {
                                 $badgeClass = "bg-red-50 text-red-700";
-                            } else {
+                            } elseif ($statusLower === "pending") {
                                 $badgeClass = "bg-amber-50 text-amber-700";
+                            }
+
+                            $registrationDate = "N/A";
+
+                            if (!empty($person["created_at"])) {
+                                $timestamp = strtotime($person["created_at"]);
+
+                                if ($timestamp !== false) {
+                                    $registrationDate = date("M d, Y", $timestamp);
+                                }
+                            }
+
+                            $residentInitial = strtoupper(substr(trim((string)$name), 0, 1));
+
+                            if ($residentInitial === "") {
+                                $residentInitial = "R";
                             }
 
                             ?>
 
-                            <tr class="resident-row border-b border-slate-100 hover:bg-slate-50 transition">
+                            <tr class="resident-row border-b border-slate-100 hover:bg-slate-50">
 
-                                <td class="py-5 px-6 text-sm text-slate-400">
-                                    <?= e($person["id"] ?? "") ?>
+                                <td class="py-5 px-6 text-sm text-slate-400 font-semibold">
+                                    #<?= e($person["id"]) ?>
                                 </td>
 
                                 <td class="py-5 px-6">
 
                                     <div class="flex items-center gap-3">
 
-                                        <div class="w-9 h-9 rounded-xl bg-green-50 text-green-700 flex items-center justify-center font-bold text-sm">
-                                            <?= e(strtoupper(substr($name, 0, 1))) ?>
+                                        <div class="w-10 h-10 rounded-xl bg-green-50 text-green-700 flex items-center justify-center font-bold text-sm">
+                                            <?= e($residentInitial) ?>
                                         </div>
 
                                         <span class="text-sm font-semibold text-slate-800">
@@ -828,10 +1010,18 @@ body {
                                     <?= e($address) ?>
                                 </td>
 
+                                <td class="py-5 px-6 text-sm text-slate-500">
+                                    <?= e($registrationDate) ?>
+                                </td>
+
                                 <td class="py-5 px-6">
 
-                                    <span class="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold <?= e($badgeClass) ?>">
-                                        <?= e(ucfirst($status)) ?>
+                                    <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold <?= e($badgeClass) ?>">
+
+                                        <span class="w-1.5 h-1.5 rounded-full bg-current"></span>
+
+                                        <?= e(ucfirst((string)$status)) ?>
+
                                     </span>
 
                                 </td>
@@ -843,9 +1033,23 @@ body {
                     <?php else: ?>
 
                         <tr>
-                            <td colspan="5" class="text-center py-12 text-slate-400 text-sm">
-                                No resident records found.
+
+                            <td colspan="6" class="text-center py-14">
+
+                                <div class="text-4xl mb-3">
+                                    👥
+                                </div>
+
+                                <p class="text-sm font-semibold text-slate-600">
+                                    <?= $search !== "" ? "No matching residents found." : "No resident records found." ?>
+                                </p>
+
+                                <p class="text-xs text-slate-400 mt-1">
+                                    <?= $search !== "" ? "Try another name, username, address, or resident ID." : "Registered residents will appear here." ?>
+                                </p>
+
                             </td>
+
                         </tr>
 
                     <?php endif; ?>
@@ -854,17 +1058,25 @@ body {
 
                 </table>
 
-                <p id="noSearchResults" class="hidden text-center py-8 text-slate-400 text-sm">
-                    No matching residents found.
-                </p>
-
             </div>
 
 
-            <div class="p-5 border-t border-slate-100 flex items-center justify-between">
+            <!-- TABLE FOOTER -->
+
+            <div class="p-5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2">
 
                 <p class="text-xs text-slate-400">
-                    Showing up to 8 recent records
+
+                    <?php if ($search !== ""): ?>
+
+                        Search results for: <strong><?= e($search) ?></strong>
+
+                    <?php else: ?>
+
+                        Showing up to 8 recent resident records
+
+                    <?php endif; ?>
+
                 </p>
 
                 <span class="text-xs font-semibold text-green-700">
@@ -878,74 +1090,186 @@ body {
 
         <!-- OTHER MODULES -->
 
-        <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-10">
+        <section class="mb-10">
 
+            <div class="mb-5">
 
-            <!-- VERIFICATION -->
+                <h2 class="text-xl font-extrabold text-slate-900">
+                    Barangay Management Modules
+                </h2>
 
-            <div id="verification" class="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-md transition">
-
-                <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl mb-5">
-                    🛡️
-                </div>
-
-                <h3 class="font-bold text-slate-900">
-                    Account Verification
-                </h3>
-
-                <p class="text-sm text-slate-400 mt-2 leading-relaxed">
-                    Review resident accounts and manage verification.
-                </p>
-
-                <p class="text-xs text-amber-600 font-semibold mt-5">
-                    Module not connected yet
+                <p class="text-sm text-slate-400 mt-1">
+                    Additional services available in the administration portal.
                 </p>
 
             </div>
 
 
-            <!-- DOCUMENT REQUESTS -->
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
 
-            <div id="requests" class="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-md transition">
 
-                <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl mb-5">
-                    📄
+                <!-- ACCOUNT VERIFICATION -->
+
+                <div
+                    id="verification"
+                    class="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-md transition">
+
+                    <div class="flex items-center justify-between mb-5">
+
+                        <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl">
+                            🛡️
+                        </div>
+
+                        <span class="text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full">
+                            Verification
+                        </span>
+
+                    </div>
+
+                    <h3 class="font-bold text-slate-900">
+                        Account Verification
+                    </h3>
+
+                    <p class="text-sm text-slate-400 mt-2 leading-relaxed">
+                        Review resident registrations and verify account information before approval.
+                    </p>
+
+                    <div class="flex items-center justify-between mt-5">
+
+                        <span class="text-sm font-bold text-amber-600">
+                            <?= number_format($pendingResidents) ?> Pending
+                        </span>
+
+                        <span class="text-xs text-slate-400">
+                            Module not connected
+                        </span>
+
+                    </div>
+
                 </div>
 
-                <h3 class="font-bold text-slate-900">
-                    Document Requests
-                </h3>
 
-                <p class="text-sm text-slate-400 mt-2 leading-relaxed">
-                    Manage barangay clearance and other resident document requests.
-                </p>
+                <!-- DOCUMENT REQUESTS -->
 
-                <p class="text-xs text-blue-600 font-semibold mt-5">
-                    Module not connected yet
-                </p>
+                <div
+                    id="requests"
+                    class="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-md transition">
+
+                    <div class="flex items-center justify-between mb-5">
+
+                        <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl">
+                            📄
+                        </div>
+
+                        <span class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full">
+                            Documents
+                        </span>
+
+                    </div>
+
+                    <h3 class="font-bold text-slate-900">
+                        Document Requests
+                    </h3>
+
+                    <p class="text-sm text-slate-400 mt-2 leading-relaxed">
+                        Manage barangay clearance, certificates, and other resident document requests.
+                    </p>
+
+                    <p class="text-xs text-blue-600 font-semibold mt-5">
+                        Module not connected
+                    </p>
+
+                </div>
+
+
+                <!-- ANNOUNCEMENTS -->
+
+                <div
+                    id="announcements"
+                    class="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-md transition">
+
+                    <div class="flex items-center justify-between mb-5">
+
+                        <div class="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl">
+                            📢
+                        </div>
+
+                        <span class="text-xs font-bold text-orange-600 bg-orange-50 px-3 py-1.5 rounded-full">
+                            Community
+                        </span>
+
+                    </div>
+
+                    <h3 class="font-bold text-slate-900">
+                        Announcements
+                    </h3>
+
+                    <p class="text-sm text-slate-400 mt-2 leading-relaxed">
+                        Publish important barangay updates, community notices, and public information.
+                    </p>
+
+                    <p class="text-xs text-orange-600 font-semibold mt-5">
+                        Module not connected
+                    </p>
+
+                </div>
 
             </div>
 
+        </section>
 
-            <!-- ANNOUNCEMENTS -->
 
-            <div id="announcements" class="bg-white border border-slate-200 rounded-2xl p-6 hover:shadow-md transition">
+        <!-- SYSTEM INFORMATION -->
 
-                <div class="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl mb-5">
-                    📢
+        <section
+            id="systemInfo"
+            class="bg-white border border-slate-200 rounded-2xl p-6 mb-8">
+
+            <h2 class="font-extrabold text-slate-900">
+                System Information
+            </h2>
+
+            <p class="text-sm text-slate-400 mt-1">
+                Administration portal details
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mt-6">
+
+                <div>
+
+                    <p class="text-xs text-slate-400 mb-1">
+                        Application
+                    </p>
+
+                    <p class="text-sm font-semibold text-slate-700">
+                        Barangay Management System
+                    </p>
+
                 </div>
 
-                <h3 class="font-bold text-slate-900">
-                    Announcements
-                </h3>
+                <div>
 
-                <p class="text-sm text-slate-400 mt-2 leading-relaxed">
-                    Publish important barangay updates and community notices.
-                </p>
+                    <p class="text-xs text-slate-400 mb-1">
+                        Barangay
+                    </p>
 
-                <p class="text-xs text-orange-600 font-semibold mt-5">
-                    Module not connected yet
-                </p>
+                    <p class="text-sm font-semibold text-slate-700">
+                        Guindacpan
+                    </p>
+
+                </div>
+
+                <div>
+
+                    <p class="text-xs text-slate-400 mb-1">
+                        Account Type
+                    </p>
+
+                    <p class="text-sm font-semibold text-green-700">
+                        Administrator
+                    </p>
+
+                </div>
 
             </div>
 
@@ -954,7 +1278,7 @@ body {
 
         <!-- FOOTER -->
 
-        <footer class="border-t border-slate-200 pt-6 pb-3 text-center">
+        <footer class="border-t border-slate-200 pt-6 pb-5 text-center">
 
             <p class="text-xs text-slate-400">
                 © <?= date("Y") ?> Barangay Guindacpan
@@ -971,99 +1295,6 @@ body {
 </main>
 
 </div>
-
-
-<!-- JAVASCRIPT -->
-
-<script>
-
-// ============================================
-// MOBILE SIDEBAR
-// ============================================
-
-function openSidebar() {
-
-    document.getElementById("adminSidebar")
-        .classList.remove("-translate-x-full");
-
-    document.getElementById("overlay")
-        .classList.remove("hidden");
-
-}
-
-function closeSidebar() {
-
-    document.getElementById("adminSidebar")
-        .classList.add("-translate-x-full");
-
-    document.getElementById("overlay")
-        .classList.add("hidden");
-
-}
-
-
-// ============================================
-// RESIDENT SEARCH
-// ============================================
-
-const searchInput = document.getElementById("residentSearch");
-
-if (searchInput) {
-
-    searchInput.addEventListener("input", function () {
-
-        const searchValue = this.value.toLowerCase();
-
-        const rows = document.querySelectorAll(".resident-row");
-
-        let visibleCount = 0;
-
-        rows.forEach(row => {
-
-            const rowText = row.textContent.toLowerCase();
-
-            if (rowText.includes(searchValue)) {
-
-                row.style.display = "";
-
-                visibleCount++;
-
-            } else {
-
-                row.style.display = "none";
-
-            }
-
-        });
-
-        const noResults = document.getElementById("noSearchResults");
-
-        if (noResults) {
-            noResults.classList.toggle("hidden", visibleCount !== 0);
-        }
-
-    });
-
-}
-
-
-// ============================================
-// CLOSE MOBILE SIDEBAR ON NAVIGATION
-// ============================================
-
-document.querySelectorAll("#adminSidebar .nav-link").forEach(link => {
-
-    link.addEventListener("click", function () {
-
-        if (window.innerWidth < 1024) {
-            closeSidebar();
-        }
-
-    });
-
-});
-
-</script>
 
 </body>
 </html>

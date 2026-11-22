@@ -269,26 +269,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     </div>
 
-    <script>
-        function toggleAdminPassword() {
-            const input = document.getElementById("adminPassword");
-            const icon = document.getElementById("adminEye");
-
-            if (input.type === "password") {
-                input.type = "text";
-                icon.setAttribute("data-lucide", "eye-off");
-            } else {
-                input.type = "password";
-                icon.setAttribute("data-lucide", "eye");
-            }
-
-            lucide.createIcons();
-        }
-
-        document.addEventListener("DOMContentLoaded", function () {
-            lucide.createIcons();
-        });
-    </script>
-
+  
 </body>
+ <script src="adme.js"></script>
 </html>

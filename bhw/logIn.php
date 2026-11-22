@@ -1,10 +1,13 @@
 
 <?php
 // =============================================
-// BHW LOGIN SYSTEM - MYSQLI
+// BHW LOGIN SYSTEM - PDO VERSION
+// Database: barangay_health_db
 // =============================================
 
 // SESSION CONFIGURATION
+$isHttps = isset($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off";
+
 session_name("BARANGAY_BHW_SESSION");
 
 ini_set("session.use_strict_mode", "1");
@@ -14,24 +17,31 @@ ini_set("session.use_trans_sid", "0");
 session_set_cookie_params([
     "lifetime" => 0,
     "path" => "/",
-    "secure" => !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off",
+    "secure" => $isHttps,
     "httponly" => true,
     "samesite" => "Lax"
 ]);
 
 session_start();
 
-// DATABASE CONNECTION
+// SECURITY HEADERS
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("X-Content-Type-Options: nosniff");
+header("X-Frame-Options: SAMEORIGIN");
+
+// DATABASE CONNECTION - PDO
 require_once __DIR__ . "/database.php";
 
-mysqli_report(MYSQLI_REPORT_OFF);
-
-// CHECK DATABASE CONNECTION
-if (!isset($conn) || !($conn instanceof mysqli)) {
-    error_log("BHW Login: Invalid MySQLi database connection.");
+// VERIFY PDO CONNECTION
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    error_log("BHW Login: PDO connection unavailable.");
     http_response_code(500);
     exit("Database connection error. Please check database.php.");
 }
+
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
 // ALREADY LOGGED IN
 if (!empty($_SESSION["bhw_id"])) {
@@ -60,121 +70,117 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $passwordInput = $_POST["password"] ?? "";
     $token = $_POST["csrf_token"] ?? "";
 
-    $email = is_string($emailInput) ? trim($emailInput) : "";
-    $password = is_string($passwordInput) ? $passwordInput : "";
+    $email = is_string($emailInput)
+        ? strtolower(trim($emailInput))
+        : "";
 
+    $password = is_string($passwordInput)
+        ? $passwordInput
+        : "";
+
+    // CSRF VALIDATION
     if (
         !is_string($token) ||
         !hash_equals($_SESSION["bhw_login_csrf"], $token)
     ) {
+
         $message = "Invalid request. Please refresh the page.";
 
     } elseif ($email === "" || $password === "") {
+
         $message = "Please enter your email and password.";
 
     } elseif (
         !filter_var($email, FILTER_VALIDATE_EMAIL) ||
         strlen($email) > 150
     ) {
+
         $message = "Invalid email or password.";
 
     } else {
 
-        // =============================================
-        // FETCH BHW ACCOUNT
-        // TABLE: bhw_accounts
-        // =============================================
+        try {
 
-        $sql = "
-            SELECT
-                id,
-                full_name,
-                email,
-                password,
-                status
-            FROM bhw_accounts
-            WHERE email = ?
-            LIMIT 1
-        ";
+            // FETCH BHW ACCOUNT USING PDO
+            $sql = "
+                SELECT
+                    id,
+                    full_name,
+                    email,
+                    password,
+                    status
+                FROM bhw_accounts
+                WHERE email = :email
+                LIMIT 1
+            ";
 
-        $stmt = mysqli_prepare($conn, $sql);
+            $stmt = $pdo->prepare($sql);
 
-        if (!$stmt) {
+            $stmt->execute([
+                ":email" => $email
+            ]);
 
-            error_log("BHW Login Prepare Error: " . mysqli_error($conn));
-            $message = "Unable to process login. Please check the database structure.";
+            $account = $stmt->fetch();
 
-        } else {
+            if ($account) {
 
-            mysqli_stmt_bind_param($stmt, "s", $email);
+                $hashedPassword = $account["password"];
 
-            if (!mysqli_stmt_execute($stmt)) {
+                // VERIFY PASSWORD
+                if (
+                    is_string($hashedPassword) &&
+                    password_verify($password, $hashedPassword)
+                ) {
 
-                error_log("BHW Login Execute Error: " . mysqli_stmt_error($stmt));
-                $message = "Unable to process login. Please try again.";
-
-            } else {
-
-                mysqli_stmt_bind_result(
-                    $stmt,
-                    $accountId,
-                    $fullName,
-                    $accountEmail,
-                    $hashedPassword,
-                    $accountStatus
-                );
-
-                if (mysqli_stmt_fetch($stmt)) {
-
-                    // VERIFY PASSWORD
+                    // CHECK ADMIN APPROVAL
                     if (
-                        is_string($hashedPassword) &&
-                        password_verify($password, $hashedPassword)
+                        strcasecmp(
+                            trim((string)$account["status"]),
+                            "Active"
+                        ) !== 0
                     ) {
 
-                        // CHECK ADMIN APPROVAL
-                        if (strcasecmp(trim((string)$accountStatus), "Active") !== 0) {
-
-                            $message = "Your account is pending administrator approval. Please contact your administrator.";
-
-                        } else {
-
-                            // REGENERATE SESSION ID
-                            session_regenerate_id(true);
-
-                            // STORE BHW SESSION
-                            $_SESSION["bhw_id"] = (int)$accountId;
-                            $_SESSION["bhw_name"] = $fullName;
-                            $_SESSION["bhw_email"] = $accountEmail;
-
-                            // REMOVE LOGIN CSRF TOKEN
-                            unset($_SESSION["bhw_login_csrf"]);
-
-                            mysqli_stmt_close($stmt);
-
-                            // REDIRECT TO DASHBOARD
-                            header("Location: dashboard.php");
-                            exit;
-                        }
+                        $message = "Your account is pending administrator approval. Please contact your administrator.";
 
                     } else {
 
-                        $message = "Invalid email or password.";
+                        // REGENERATE SESSION ID
+                        session_regenerate_id(true);
+
+                        // STORE BHW SESSION
+                        $_SESSION["bhw_id"] = (int)$account["id"];
+                        $_SESSION["bhw_name"] = $account["full_name"];
+                        $_SESSION["bhw_email"] = $account["email"];
+
+                        // REMOVE LOGIN CSRF TOKEN
+                        unset($_SESSION["bhw_login_csrf"]);
+
+                        // REDIRECT TO DASHBOARD
+                        header("Location: dashboard.php");
+                        exit;
                     }
 
                 } else {
 
                     $message = "Invalid email or password.";
                 }
+
+            } else {
+
+                $message = "Invalid email or password.";
             }
 
-            mysqli_stmt_close($stmt);
+        } catch (PDOException $e) {
+
+            error_log("BHW Login PDO Error: " . $e->getMessage());
+
+            $message = "Unable to process login. Please check the database structure.";
         }
     }
 }
 
 // =============================================
-// GENERATE NEW CSRF TOKEN IF NECESSARY
+// GENERATE NEW CSRF TOKEN
 // =============================================
 
 if (empty($_SESSION["bhw_login_csrf"])) {
@@ -204,6 +210,7 @@ if (empty($_SESSION["bhw_login_csrf"])) {
     <style>
         body {
             font-family: 'Inter', sans-serif;
+        
         }
 
         .input-field:focus {
@@ -211,13 +218,14 @@ if (empty($_SESSION["bhw_login_csrf"])) {
             border-color: #2563eb;
             box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
         }
+        
     </style>
 
 </head>
 
 <body class="min-h-screen bg-slate-100 flex items-center justify-center p-5">
 
-<div class="w-full max-w-5xl bg-white rounded-3xl shadow-xl overflow-hidden grid md:grid-cols-2">
+<div class="w-full max-w-5xl bg-black rounded-3xl shadow-xl overflow-hidden grid md:grid-cols-2">
 
     <!-- LEFT PANEL -->
 
@@ -289,15 +297,15 @@ if (empty($_SESSION["bhw_login_csrf"])) {
 
         <div class="mb-8">
 
-            <span class="text-blue-600 text-xs font-bold tracking-widest uppercase">
+            <span class="text-white text-xs font-bold tracking-widest uppercase">
                 BHW Portal
             </span>
 
-            <h2 class="text-3xl font-extrabold text-slate-800 mt-2">
+            <h2 class="text-3xl font-extrabold text-slate-800 mt-2 text-white">
                 Sign In
             </h2>
 
-            <p class="text-sm text-slate-500 mt-2">
+            <p class="text-sm text-slate-500 mt-2 text-white">
                 Enter your account credentials to continue.
             </p>
 
@@ -334,7 +342,7 @@ if (empty($_SESSION["bhw_login_csrf"])) {
 
             <div>
 
-                <label class="block text-sm font-semibold text-slate-700 mb-2">
+                <label class="block text-sm font-semibold text-slate-700 mb-2 text-white">
                     Email Address
                 </label>
 
@@ -364,7 +372,7 @@ if (empty($_SESSION["bhw_login_csrf"])) {
 
             <div>
 
-                <label class="block text-sm font-semibold text-slate-700 mb-2">
+                <label class="block text-sm font-semibold text-slate-700 mb-2 text-white">
                     Password
                 </label>
 
@@ -447,7 +455,44 @@ if (empty($_SESSION["bhw_login_csrf"])) {
 
 </div>
 
-<script src="bhw.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    // INITIALIZE LUCIDE ICONS
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
+    // SHOW / HIDE PASSWORD
+    const toggleButton = document.getElementById("togglePassword");
+    const passwordInput = document.getElementById("password");
+
+    if (toggleButton && passwordInput) {
+
+        toggleButton.addEventListener("click", function () {
+
+            const isPassword = passwordInput.type === "password";
+
+            passwordInput.type = isPassword ? "text" : "password";
+
+            toggleButton.setAttribute(
+                "aria-label",
+                isPassword ? "Hide password" : "Show password"
+            );
+
+            toggleButton.innerHTML = isPassword
+                ? '<i data-lucide="eye-off" class="w-5 h-5"></i>'
+                : '<i data-lucide="eye" class="w-5 h-5"></i>';
+
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+
+        });
+    }
+
+});
+</script>
 
 </body>
 </html>

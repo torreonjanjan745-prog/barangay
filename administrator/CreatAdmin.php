@@ -1,88 +1,109 @@
 
 <?php
 // =============================================
-// CREATE FIRST ADMIN ACCOUNT
+// CREATE FIRST ADMINISTRATOR ACCOUNT
+// BARANGAY GUINDACPAN
+// PDO VERSION
 // =============================================
 
-session_name("BARANGAY_ADMIN_SETUP");
+// SESSION CONFIGURATION
+$isHttps = (
+    isset($_SERVER["HTTPS"]) &&
+    $_SERVER["HTTPS"] !== "off"
+);
 
-ini_set("session.use_strict_mode", "1");
-ini_set("session.use_only_cookies", "1");
-ini_set("session.use_trans_sid", "0");
+if (session_status() === PHP_SESSION_NONE) {
+    session_name("BARANGAY_ADMIN_SETUP");
 
-session_set_cookie_params([
-    "lifetime" => 0,
-    "path" => "/",
-    "secure" => !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off",
-    "httponly" => true,
-    "samesite" => "Lax"
-]);
+    ini_set("session.use_strict_mode", "1");
+    ini_set("session.use_only_cookies", "1");
+    ini_set("session.use_trans_sid", "0");
 
-session_start();
+    session_set_cookie_params([
+        "lifetime" => 0,
+        "path" => "/",
+        "secure" => $isHttps,
+        "httponly" => true,
+        "samesite" => "Strict"
+    ]);
 
-mysqli_report(MYSQLI_REPORT_OFF);
+    session_start();
+}
 
+// SECURITY HEADERS
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("X-Content-Type-Options: nosniff");
+header("X-Frame-Options: DENY");
+header("Referrer-Policy: no-referrer");
+
+// DATABASE CONNECTION - PDO
 require_once __DIR__ . "/../db.php";
 
-if (!isset($conn) || !($conn instanceof mysqli) || $conn->connect_errno) {
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    error_log("Admin setup: PDO connection unavailable.");
     http_response_code(500);
     exit("Database connection error.");
 }
 
-$conn->set_charset("utf8mb4");
-
-// CHECK IF ADMIN ALREADY EXISTS
-$countSql = "SELECT COUNT(*) FROM admin_account";
-$countResult = mysqli_query($conn, $countSql);
-
-if (!$countResult) {
-    error_log("Admin Setup Error: " . mysqli_error($conn));
-    exit("Unable to check administrator account.");
-}
-
-$countRow = mysqli_fetch_row($countResult);
-$adminExists = (int)$countRow[0] > 0;
-
+// INITIAL VALUES
 $message = "";
 $messageType = "error";
-
 $fullName = "";
-$email = "";
-$contact = "";
+$username = "";
+$adminExists = false;
 
+// =============================================
+// CHECK EXISTING ADMINISTRATOR
+// =============================================
+
+try {
+    $countStmt = $pdo->query(
+        "SELECT COUNT(*) FROM admin_users"
+    );
+
+    $adminExists = ((int)$countStmt->fetchColumn() > 0);
+
+} catch (PDOException $e) {
+    error_log("Admin setup count error: " . $e->getMessage());
+    http_response_code(500);
+    exit("Unable to check administrator account. Please verify the admin_users table.");
+}
+
+// =============================================
 // CSRF TOKEN
+// =============================================
+
 if (empty($_SESSION["admin_setup_csrf"])) {
     $_SESSION["admin_setup_csrf"] = bin2hex(random_bytes(32));
 }
 
-// HANDLE FORM
+// =============================================
+// HANDLE CREATE ADMIN FORM
+// =============================================
+
 if ($_SERVER["REQUEST_METHOD"] === "POST" && !$adminExists) {
 
-    $token = $_POST["csrf_token"] ?? "";
-
+    $tokenInput = $_POST["csrf_token"] ?? "";
     $nameInput = $_POST["full_name"] ?? "";
-    $emailInput = $_POST["email"] ?? "";
-    $contactInput = $_POST["contact_number"] ?? "";
+    $usernameInput = $_POST["username"] ?? "";
     $passwordInput = $_POST["password"] ?? "";
     $confirmInput = $_POST["confirm_password"] ?? "";
 
+    $token = is_string($tokenInput) ? $tokenInput : "";
     $fullName = is_string($nameInput) ? trim($nameInput) : "";
-    $email = is_string($emailInput) ? trim($emailInput) : "";
-    $contact = is_string($contactInput) ? trim($contactInput) : "";
-
+    $username = is_string($usernameInput) ? trim($usernameInput) : "";
     $password = is_string($passwordInput) ? $passwordInput : "";
     $confirmPassword = is_string($confirmInput) ? $confirmInput : "";
 
     if (
-        !is_string($token) ||
         !hash_equals($_SESSION["admin_setup_csrf"], $token)
     ) {
         $message = "Invalid request. Please refresh the page.";
 
     } elseif (
         $fullName === "" ||
-        $email === "" ||
-        $contact === "" ||
+        $username === "" ||
         $password === "" ||
         $confirmPassword === ""
     ) {
@@ -92,236 +113,421 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !$adminExists) {
         $message = "Full name must not exceed 150 characters.";
 
     } elseif (
-        strlen($email) > 150 ||
-        !filter_var($email, FILTER_VALIDATE_EMAIL)
+        strlen($username) < 4 ||
+        strlen($username) > 100 ||
+        !preg_match('/^[a-zA-Z0-9_.@-]+$/', $username)
     ) {
-        $message = "Please enter a valid email address.";
-
-    } elseif (
-        strlen($contact) > 20 ||
-        !preg_match('/^[0-9+\-\s()]+$/', $contact)
-    ) {
-        $message = "Please enter a valid contact number.";
+        $message = "Username must be 4 to 100 characters and contain only letters, numbers, dots, underscores, @ or hyphens.";
 
     } elseif (strlen($password) < 12) {
-        $message = "Administrator password must contain at least 12 characters.";
+        $message = "Password must contain at least 12 characters.";
 
     } elseif ($password !== $confirmPassword) {
         $message = "Passwords do not match.";
 
     } else {
 
-        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+        try {
+            // CHECK DUPLICATE USERNAME
+            $check = $pdo->prepare(
+                "SELECT id
+                 FROM admin_users
+                 WHERE username = :username
+                 LIMIT 1"
+            );
 
-        if ($hashedPassword === false) {
+            $check->execute([
+                ":username" => $username
+            ]);
 
-            $message = "Unable to secure your password.";
+            if ($check->fetch()) {
 
-        } else {
-
-            $sql = "
-                INSERT INTO admin_account
-                (
-                    full_name,
-                    email,
-                    password,
-                    contact_number,
-                    position,
-                    status
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-            ";
-
-            $stmt = mysqli_prepare($conn, $sql);
-
-            if (!$stmt) {
-
-                error_log("Admin Insert Prepare Error: " . mysqli_error($conn));
-                $message = "Unable to create administrator account.";
+                $message = "This admin username is already registered.";
 
             } else {
 
-                $position = "Administrator";
-                $status = "Active";
-
-                mysqli_stmt_bind_param(
-                    $stmt,
-                    "ssssss",
-                    $fullName,
-                    $email,
-                    $hashedPassword,
-                    $contact,
-                    $position,
-                    $status
+                // HASH PASSWORD
+                $hashedPassword = password_hash(
+                    $password,
+                    PASSWORD_DEFAULT
                 );
 
-                if (mysqli_stmt_execute($stmt)) {
+                if ($hashedPassword === false) {
+
+                    $message = "Unable to secure your password.";
+
+                } else {
+
+                    // INSERT ADMINISTRATOR
+                    $stmt = $pdo->prepare(
+                        "INSERT INTO admin_users
+                        (full_name, username, password)
+                        VALUES
+                        (:full_name, :username, :password)"
+                    );
+
+                    $stmt->execute([
+                        ":full_name" => $fullName,
+                        ":username" => $username,
+                        ":password" => $hashedPassword
+                    ]);
 
                     $message = "Administrator account created successfully! You can now log in.";
                     $messageType = "success";
 
                     $fullName = "";
-                    $email = "";
-                    $contact = "";
+                    $username = "";
 
-                    $_SESSION["admin_setup_csrf"] = bin2hex(random_bytes(32));
-
+                    // LOCK FIRST-ADMIN SETUP
                     $adminExists = true;
-
-                } else {
-
-                    error_log("Admin Insert Error: " . mysqli_stmt_error($stmt));
-
-                    if (mysqli_stmt_errno($stmt) === 1062) {
-                        $message = "This email address is already registered.";
-                    } else {
-                        $message = "Unable to create administrator account. Please check the database.";
-                    }
                 }
+            }
 
-                mysqli_stmt_close($stmt);
+        } catch (PDOException $e) {
+
+            error_log("Admin setup insert error: " . $e->getMessage());
+
+            if ($e->getCode() === "23000") {
+                $message = "This admin username is already registered.";
+            } else {
+                $message = "Unable to create administrator account. Please check the database table.";
             }
         }
     }
+
+    // ROTATE CSRF TOKEN
+    $_SESSION["admin_setup_csrf"] = bin2hex(random_bytes(32));
 }
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Administrator Account</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Create Administrator | Barangay Guindacpan</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 25px;
+            background: #f1f5f9;
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background: #ffffff;
+            padding: 36px;
+            border-radius: 18px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.10);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .logo {
+            width: 68px;
+            height: 68px;
+            margin: 0 auto 15px;
+            border-radius: 17px;
+            overflow: hidden;
+            background: #dcfce7;
+        }
+
+        .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        h1 {
+            color: #111827;
+            font-size: 25px;
+            margin-bottom: 9px;
+        }
+
+        .subtitle {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .message {
+            padding: 14px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .success {
+            color: #166534;
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+        }
+
+        .error {
+            color: #991b1b;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+        }
+
+        .notice {
+            padding: 22px;
+            border-radius: 12px;
+            text-align: center;
+            color: #1e40af;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+        }
+
+        .notice h2 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+
+        .notice p {
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 18px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #374151;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 13px 14px;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #15803d;
+            box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.12);
+        }
+
+        button,
+        .login-link {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            background: #14532d;
+            color: #ffffff;
+            text-align: center;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover,
+        .login-link:hover {
+            background: #166534;
+        }
+
+        .footer {
+            margin-top: 25px;
+            color: #64748b;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .back {
+            display: block;
+            margin-top: 18px;
+            text-align: center;
+            color: #166534;
+            font-size: 13px;
+            text-decoration: none;
+        }
+
+        .back:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 25px 20px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+        }
+    </style>
 </head>
 
-<body class="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+<body>
 
-<div class="w-full max-w-lg bg-white rounded-2xl shadow-xl p-6 sm:p-9">
+    <main class="container">
 
-    <div class="text-center mb-7">
-        <div class="w-16 h-16 bg-blue-100 text-blue-700 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
-            🛡️
-        </div>
+        <div class="header">
 
-        <h1 class="text-2xl font-bold text-gray-900">
-            Create Administrator
-        </h1>
+            <div class="logo">
+                <img
+                    src="../asset/logo.jpg"
+                    alt="Barangay Guindacpan Logo">
+            </div>
 
-        <p class="text-sm text-gray-500 mt-2">
-            Set up the first administrator account.
-        </p>
-    </div>
+            <h1>Create Administrator</h1>
 
-    <?php if ($message !== ""): ?>
-        <div class="mb-5 p-4 rounded-xl text-sm
-            <?php echo $messageType === "success"
-                ? "bg-green-50 text-green-700 border border-green-200"
-                : "bg-red-50 text-red-700 border border-red-200"; ?>">
-            <?php echo htmlspecialchars($message, ENT_QUOTES, "UTF-8"); ?>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($adminExists): ?>
-
-        <div class="bg-blue-50 border border-blue-200 text-blue-800 p-5 rounded-xl text-center">
-            <h2 class="font-bold mb-2">Administrator Already Exists</h2>
-            <p class="text-sm mb-4">
-                The first administrator account has already been created.
+            <p class="subtitle">
+                Barangay Guindacpan Administration
             </p>
 
-            <a href="adminlogIn.php"
-               class="inline-block bg-blue-700 hover:bg-blue-800 text-white px-6 py-3 rounded-xl font-semibold">
-                Go to Admin Login
-            </a>
         </div>
 
-    <?php else: ?>
+        <?php if ($message !== ""): ?>
 
-        <form method="POST" action="" class="space-y-4">
+            <div
+                class="message <?= $messageType === "success" ? "success" : "error" ?>"
+                role="alert">
 
-            <input
-                type="hidden"
-                name="csrf_token"
-                value="<?php echo htmlspecialchars($_SESSION["admin_setup_csrf"], ENT_QUOTES, "UTF-8"); ?>"
-            >
+                <?= htmlspecialchars($message, ENT_QUOTES, "UTF-8") ?>
 
-            <div>
-                <label class="block text-sm font-semibold mb-2">Full Name</label>
-                <input
-                    type="text"
-                    name="full_name"
-                    maxlength="150"
-                    value="<?php echo htmlspecialchars($fullName, ENT_QUOTES, "UTF-8"); ?>"
-                    placeholder="Administrator full name"
-                    class="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                >
             </div>
 
-            <div>
-                <label class="block text-sm font-semibold mb-2">Email Address</label>
-                <input
-                    type="email"
-                    name="email"
-                    maxlength="150"
-                    value="<?php echo htmlspecialchars($email, ENT_QUOTES, "UTF-8"); ?>"
-                    placeholder="admin@example.com"
-                    class="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                >
+        <?php endif; ?>
+
+        <?php if ($adminExists): ?>
+
+            <div class="notice">
+
+                <h2>Administrator Already Exists</h2>
+
+                <p>
+                    An administrator account has already been created.
+                    You can now proceed to the administrator login page.
+                </p>
+
+                <a href="adminlogIn.php" class="login-link">
+                    Go to Admin Login
+                </a>
+
             </div>
 
-            <div>
-                <label class="block text-sm font-semibold mb-2">Contact Number</label>
+        <?php else: ?>
+
+            <form method="POST" action="">
+
                 <input
-                    type="tel"
-                    name="contact_number"
-                    maxlength="20"
-                    value="<?php echo htmlspecialchars($contact, ENT_QUOTES, "UTF-8"); ?>"
-                    placeholder="Contact number"
-                    class="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                >
-            </div>
+                    type="hidden"
+                    name="csrf_token"
+                    value="<?= htmlspecialchars(
+                        $_SESSION["admin_setup_csrf"],
+                        ENT_QUOTES,
+                        "UTF-8"
+                    ) ?>">
 
-            <div>
-                <label class="block text-sm font-semibold mb-2">Password</label>
-                <input
-                    type="password"
-                    name="password"
-                    minlength="12"
-                    placeholder="At least 12 characters"
-                    class="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                >
-            </div>
+                <div class="form-group">
 
-            <div>
-                <label class="block text-sm font-semibold mb-2">Confirm Password</label>
-                <input
-                    type="password"
-                    name="confirm_password"
-                    minlength="12"
-                    placeholder="Confirm your password"
-                    class="w-full border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                >
-            </div>
+                    <label for="full_name">Full Name</label>
 
-            <button
-                type="submit"
-                class="w-full bg-blue-700 hover:bg-blue-800 text-white font-semibold py-3 rounded-xl transition"
-            >
-                Create Administrator Account
-            </button>
+                    <input
+                        type="text"
+                        id="full_name"
+                        name="full_name"
+                        maxlength="150"
+                        value="<?= htmlspecialchars($fullName, ENT_QUOTES, "UTF-8") ?>"
+                        placeholder="Administrator full name"
+                        autocomplete="name"
+                        required>
 
-        </form>
+                </div>
 
-    <?php endif; ?>
+                <div class="form-group">
 
-</div>
+                    <label for="username">Admin Username</label>
+
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        minlength="4"
+                        maxlength="100"
+                        pattern="[a-zA-Z0-9_.@-]+"
+                        value="<?= htmlspecialchars($username, ENT_QUOTES, "UTF-8") ?>"
+                        placeholder="Create admin username"
+                        autocomplete="username"
+                        required>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label for="password">Password</label>
+
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        minlength="12"
+                        placeholder="At least 12 characters"
+                        autocomplete="new-password"
+                        required>
+
+                </div>
+
+                <div class="form-group">
+
+                    <label for="confirm_password">Confirm Password</label>
+
+                    <input
+                        type="password"
+                        id="confirm_password"
+                        name="confirm_password"
+                        minlength="12"
+                        placeholder="Confirm your password"
+                        autocomplete="new-password"
+                        required>
+
+                </div>
+
+                <button type="submit">
+                    Create Administrator Account
+                </button>
+
+            </form>
+
+        <?php endif; ?>
+
+        <p class="footer">
+            Authorized administrators only.
+        </p>
+
+        <a href="../main.php" class="back">
+            ← Back to Homepage
+        </a>
+
+    </main>
 
 </body>
 </html>

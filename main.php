@@ -1109,7 +1109,7 @@
                 </p>
 
                 <a
-                    href="bhw/dashboard.php"
+                    href="#"
                     class="inline-block bg-green900 hover:bg-green800 text-white px-7 py-3 rounded-lg font-bold text-sm mt-7 transition"
                 >
                     Explore Our Services →
@@ -1356,9 +1356,14 @@
                         Terms of Service
                     </a>
                     <a href="admin/dashboard.php" class="hover:text-gold2 transition">
-                      Admin Portal
+                   Secretary Portal
     </a>
-
+    <a href="bhw/create.php" class="hover:text-gold2 transition">
+                  BHW Portal
+    </a>
+    <a href="administrator/CreatAdmin.php" class="hover:text-gold2 transition">
+               Administrator
+    </a>
                 </div>
 
             </div>
