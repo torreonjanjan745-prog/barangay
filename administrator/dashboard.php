@@ -1,64 +1,208 @@
 
 <?php
-// =============================================
-// ADMINISTRATOR DASHBOARD - PDO VERSION
-// Database: barangay_db
-// =============================================
+// ==================================================
+// BARANGAY GUINDACPAN
+// ADMINISTRATOR DASHBOARD
+// COMPLETE PDO VERSION
+//
+// Database: barangay_health_db
+// Table: admin_account
+// Session: BARANGAY_ADMIN_SESSION
+// ==================================================
 
-// SESSION CONFIGURATION
-session_name("BARANGAY_ADMIN_SESSION");
 
-ini_set("session.use_strict_mode", "1");
-ini_set("session.use_only_cookies", "1");
-ini_set("session.use_trans_sid", "0");
+// ==================================================
+// 1. SESSION SECURITY
+// ==================================================
 
-session_set_cookie_params([
-    "lifetime" => 0,
-    "path" => "/",
-    "secure" => !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off",
-    "httponly" => true,
-    "samesite" => "Lax"
-]);
+$isHttps = !empty($_SERVER["HTTPS"]) &&
+           $_SERVER["HTTPS"] !== "off";
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
 
-// =============================================
-// VERIFY ADMIN LOGIN
-// =============================================
+    session_name("BARANGAY_ADMIN_SESSION");
 
-if (empty($_SESSION["admin_id"])) {
-    header("Location: adminlogIn.php");
+    ini_set("session.use_strict_mode", "1");
+    ini_set("session.use_only_cookies", "1");
+    ini_set("session.use_trans_sid", "0");
+
+    session_set_cookie_params([
+        "lifetime" => 0,
+        "path" => "/",
+        "secure" => $isHttps,
+        "httponly" => true,
+        "samesite" => "Lax"
+    ]);
+
+    session_start();
+}
+
+
+// ==================================================
+// 2. SECURITY HEADERS
+// ==================================================
+
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("X-Content-Type-Options: nosniff");
+header("X-Frame-Options: DENY");
+header("Referrer-Policy: no-referrer");
+
+
+// ==================================================
+// 3. VERIFY ADMIN SESSION
+// ==================================================
+
+if (
+    empty($_SESSION["admin_id"]) ||
+    !is_numeric($_SESSION["admin_id"])
+) {
+
+    header("Location: login.php");
     exit;
+
 }
 
-// =============================================
-// DATABASE CONNECTION - PDO
-// =============================================
 
-require_once __DIR__ . "/../db.php";
+// ==================================================
+// 4. DATABASE CONNECTION
+// ==================================================
 
-if (!isset($pdo) || !($pdo instanceof PDO)) {
-    error_log("Admin Dashboard: PDO connection unavailable.");
+try {
+
+    $pdo = new PDO(
+        "mysql:host=localhost;port=3306;dbname=barangay_health_db;charset=utf8mb4",
+        "root",
+        "",
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false
+        ]
+    );
+
+} catch (PDOException $e) {
+
+    error_log("ADMIN DASHBOARD DATABASE ERROR: " . $e->getMessage());
+
     http_response_code(500);
-    exit("Database connection error. Please check db.php.");
+
+    exit("Database connection error. Please contact the administrator.");
+
 }
 
-// =============================================
-// CSRF TOKEN
-// =============================================
 
-if (empty($_SESSION["admin_dashboard_csrf"])) {
+// ==================================================
+// 5. VERIFY ADMIN ACCOUNT STILL EXISTS AND ACTIVE
+// ==================================================
+
+try {
+
+    $adminCheck = $pdo->prepare("
+        SELECT id, full_name, status
+        FROM admin_account
+        WHERE id = :id
+        LIMIT 1
+    ");
+
+    $adminCheck->execute([
+        ":id" => (int) $_SESSION["admin_id"]
+    ]);
+
+    $admin = $adminCheck->fetch();
+
+    if (
+        !$admin ||
+        strtolower(trim((string)$admin["status"])) !== "active"
+    ) {
+
+        $_SESSION = [];
+
+        if (ini_get("session.use_cookies")) {
+
+            $params = session_get_cookie_params();
+
+            setcookie(session_name(), "", [
+                "expires" => time() - 42000,
+                "path" => $params["path"],
+                "domain" => $params["domain"],
+                "secure" => $params["secure"],
+                "httponly" => $params["httponly"],
+                "samesite" => "Lax"
+            ]);
+
+        }
+
+        session_destroy();
+
+        header("Location: login.php");
+        exit;
+
+    }
+
+    $_SESSION["admin_name"] = $admin["full_name"];
+
+} catch (PDOException $e) {
+
+    error_log("ADMIN ACCOUNT VALIDATION ERROR: " . $e->getMessage());
+
+    http_response_code(500);
+
+    exit("Unable to verify administrator account.");
+
+}
+
+
+// ==================================================
+// 6. SESSION TIMEOUT
+// ==================================================
+
+$sessionTimeout = 1800;
+
+if (
+    isset($_SESSION["admin_last_activity"]) &&
+    time() - (int)$_SESSION["admin_last_activity"] > $sessionTimeout
+) {
+
+    $_SESSION = [];
+
+    session_destroy();
+
+    header("Location: login.php");
+    exit;
+
+}
+
+$_SESSION["admin_last_activity"] = time();
+
+
+// ==================================================
+// 7. CSRF TOKEN
+// ==================================================
+
+if (
+    empty($_SESSION["admin_dashboard_csrf"]) ||
+    !is_string($_SESSION["admin_dashboard_csrf"])
+) {
+
     $_SESSION["admin_dashboard_csrf"] = bin2hex(random_bytes(32));
+
 }
 
 $csrfToken = $_SESSION["admin_dashboard_csrf"];
 
+
+// ==================================================
+// 8. INITIAL VARIABLES
+// ==================================================
+
 $message = "";
 $messageType = "success";
 
-// =============================================
-// HANDLE ADMIN ACTIONS
-// =============================================
+
+// ==================================================
+// 9. HANDLE ADMIN ACTIONS
+// ==================================================
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
@@ -68,6 +212,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         !is_string($submittedToken) ||
         !hash_equals($csrfToken, $submittedToken)
     ) {
+
         $message = "Invalid request. Please refresh the page.";
         $messageType = "error";
 
@@ -75,12 +220,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $action = $_POST["action"] ?? "";
 
+        // ------------------------------------------
         // LOGOUT
+        // ------------------------------------------
+
         if ($action === "logout") {
 
             $_SESSION = [];
 
             if (ini_get("session.use_cookies")) {
+
                 $params = session_get_cookie_params();
 
                 setcookie(session_name(), "", [
@@ -91,15 +240,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     "httponly" => $params["httponly"],
                     "samesite" => "Lax"
                 ]);
+
             }
 
             session_destroy();
 
-            header("Location: adminlogIn.php");
+            header("Location: login.php");
             exit;
+
         }
 
+        // ------------------------------------------
         // APPROVE BHW ACCOUNT
+        // ------------------------------------------
+
         elseif ($action === "approve") {
 
             $bhwId = filter_var(
@@ -115,6 +269,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             } else {
 
                 try {
+
                     $stmt = $pdo->prepare("
                         UPDATE bhw_accounts
                         SET status = 'Active'
@@ -127,53 +282,68 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     ]);
 
                     if ($stmt->rowCount() > 0) {
+
                         $message = "BHW account approved successfully.";
+
                     } else {
+
                         $message = "Account not found or already approved.";
                         $messageType = "error";
+
                     }
 
                 } catch (PDOException $e) {
 
-                    error_log("BHW Approval Error: " . $e->getMessage());
+                    error_log("BHW APPROVAL ERROR: " . $e->getMessage());
 
                     $message = "Unable to approve the BHW account.";
                     $messageType = "error";
+
                 }
+
             }
 
         } else {
 
             $message = "Invalid action.";
             $messageType = "error";
+
         }
+
     }
 
-    // REFRESH CSRF TOKEN AFTER POST
+    // Rotate CSRF token after POST
     $_SESSION["admin_dashboard_csrf"] = bin2hex(random_bytes(32));
+
     $csrfToken = $_SESSION["admin_dashboard_csrf"];
+
 }
 
-// =============================================
-// DATABASE COUNT FUNCTION
-// =============================================
+
+// ==================================================
+// 10. DATABASE COUNT FUNCTION
+// ==================================================
 
 function getCount(PDO $pdo, string $sql): int {
 
     try {
-        return (int) $pdo->query($sql)->fetchColumn();
+
+        return (int)$pdo->query($sql)->fetchColumn();
 
     } catch (PDOException $e) {
 
-        error_log("Dashboard Count Error: " . $e->getMessage());
+        error_log("DASHBOARD COUNT ERROR: " . $e->getMessage());
 
         return 0;
+
     }
+
 }
 
-// =============================================
-// DASHBOARD STATISTICS
-// =============================================
+
+// ==================================================
+// 11. DASHBOARD STATISTICS
+// ==================================================
 
 $totalBHW = getCount(
     $pdo,
@@ -200,9 +370,10 @@ $totalAppointments = getCount(
     "SELECT COUNT(*) FROM bhw_appointments"
 );
 
-// =============================================
-// RECENT BHW ACCOUNTS
-// =============================================
+
+// ==================================================
+// 12. RECENT BHW ACCOUNTS
+// ==================================================
 
 $bhwAccounts = [];
 
@@ -221,38 +392,53 @@ try {
         LIMIT 10
     ");
 
-    $bhwAccounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $bhwAccounts = $stmt->fetchAll();
 
 } catch (PDOException $e) {
 
-    error_log("BHW Account Fetch Error: " . $e->getMessage());
+    error_log("BHW ACCOUNT FETCH ERROR: " . $e->getMessage());
+
 }
+
+
+// ==================================================
+// 13. ADMIN PROFILE
+// ==================================================
 
 $adminName = $_SESSION["admin_name"] ?? "Administrator";
 
-// =============================================
-// ESCAPE OUTPUT
-// =============================================
+
+// ==================================================
+// 14. ESCAPE OUTPUT
+// ==================================================
 
 function e($value): string {
+
     return htmlspecialchars(
-        (string) $value,
+        (string)$value,
         ENT_QUOTES,
         "UTF-8"
     );
+
 }
 
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
     <meta charset="UTF-8">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Administrator Dashboard | Barangay Health System</title>
+    <meta name="robots" content="noindex, nofollow">
+
+    <title>Administrator Dashboard | Barangay Guindacpan</title>
 
     <style>
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -260,7 +446,7 @@ function e($value): string {
         }
 
         body {
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             background: #f1f5f9;
             color: #1e293b;
         }
@@ -273,8 +459,6 @@ function e($value): string {
             font-family: inherit;
             cursor: pointer;
         }
-
-        /* LAYOUT */
 
         .layout {
             display: flex;
@@ -360,7 +544,7 @@ function e($value): string {
             background: #991b1b;
         }
 
-        /* MAIN CONTENT */
+        /* MAIN */
 
         .main {
             flex: 1;
@@ -403,6 +587,7 @@ function e($value): string {
 
         .welcome h3 {
             font-size: 24px;
+            overflow-wrap: anywhere;
         }
 
         .welcome p {
@@ -603,7 +788,7 @@ function e($value): string {
             margin-top: 30px;
         }
 
-        /* MOBILE MENU - CSS ONLY */
+        /* MOBILE MENU */
 
         #menu-toggle {
             display: none;
@@ -616,9 +801,11 @@ function e($value): string {
         }
 
         @media (max-width: 1000px) {
+
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
+
         }
 
         @media (max-width: 767px) {
@@ -697,8 +884,11 @@ function e($value): string {
             .portal-label {
                 display: none;
             }
+
         }
+
     </style>
+
 </head>
 
 <body>
@@ -708,6 +898,7 @@ function e($value): string {
 <div class="layout">
 
     <!-- SIDEBAR -->
+
     <aside class="sidebar">
 
         <div class="brand">
@@ -715,6 +906,7 @@ function e($value): string {
             <label for="menu-toggle" class="close-menu">×</label>
 
             <h1>♥ Barangay Health</h1>
+
             <p>Administrator Portal</p>
 
         </div>
@@ -743,12 +935,19 @@ function e($value): string {
                 Administrator
             </div>
 
-            <form method="POST">
+            <form method="POST" action="">
 
-                <input type="hidden" name="csrf_token"
-                       value="<?= e($csrfToken) ?>">
+                <input
+                    type="hidden"
+                    name="csrf_token"
+                    value="<?= e($csrfToken) ?>"
+                >
 
-                <input type="hidden" name="action" value="logout">
+                <input
+                    type="hidden"
+                    name="action"
+                    value="logout"
+                >
 
                 <button type="submit" class="logout-button">
                     ↪ Logout
@@ -760,13 +959,18 @@ function e($value): string {
 
     </aside>
 
+
     <!-- MOBILE OVERLAY -->
+
     <label for="menu-toggle" class="overlay"></label>
 
-    <!-- MAIN -->
+
+    <!-- MAIN CONTENT -->
+
     <main class="main">
 
         <!-- TOPBAR -->
+
         <header class="topbar">
 
             <div style="display:flex;align-items:center;gap:13px;">
@@ -776,8 +980,11 @@ function e($value): string {
                 </label>
 
                 <div>
+
                     <h2>Admin Dashboard</h2>
+
                     <p>Barangay Health Management System</p>
+
                 </div>
 
             </div>
@@ -788,18 +995,24 @@ function e($value): string {
 
         </header>
 
+
         <div class="content">
 
             <!-- ALERT -->
+
             <?php if ($message !== ""): ?>
 
-                <div class="alert <?= e($messageType) ?>">
+                <div class="alert <?= e($messageType) ?>" role="alert">
+
                     <?= e($message) ?>
+
                 </div>
 
             <?php endif; ?>
 
+
             <!-- WELCOME -->
+
             <section class="welcome">
 
                 <h3>Welcome, <?= e($adminName) ?>!</h3>
@@ -810,36 +1023,59 @@ function e($value): string {
 
             </section>
 
+
             <!-- STATISTICS -->
+
             <section class="stats-grid">
 
                 <div class="stat-card">
+
                     <p>Total BHW Accounts</p>
+
                     <h3><?= $totalBHW ?></h3>
+
                     <span class="icon blue">♙</span>
+
                 </div>
 
+
                 <div class="stat-card">
+
                     <p>Pending Approvals</p>
+
                     <h3><?= $pendingBHW ?></h3>
+
                     <span class="icon yellow">◷</span>
+
                 </div>
 
+
                 <div class="stat-card">
+
                     <p>Active BHW Accounts</p>
+
                     <h3><?= $activeBHW ?></h3>
+
                     <span class="icon green">✓</span>
+
                 </div>
 
+
                 <div class="stat-card">
+
                     <p>Total Patients</p>
+
                     <h3><?= $totalPatients ?></h3>
+
                     <span class="icon purple">♥</span>
+
                 </div>
 
             </section>
 
+
             <!-- APPOINTMENTS -->
+
             <section class="appointment-card">
 
                 <p>Total Appointments</p>
@@ -850,17 +1086,21 @@ function e($value): string {
 
             </section>
 
+
             <!-- BHW ACCOUNT TABLE -->
+
             <section class="table-section">
 
                 <div class="section-header">
 
                     <div>
+
                         <h3>BHW Account Management</h3>
 
                         <p>
                             Review and approve newly registered BHW accounts.
                         </p>
+
                     </div>
 
                     <a href="bhwAccount.php" class="view-link">
@@ -869,11 +1109,13 @@ function e($value): string {
 
                 </div>
 
+
                 <div class="table-wrapper">
 
                     <table>
 
                         <thead>
+
                             <tr>
                                 <th>Name</th>
                                 <th>Email</th>
@@ -882,7 +1124,9 @@ function e($value): string {
                                 <th>Status</th>
                                 <th>Action</th>
                             </tr>
+
                         </thead>
+
 
                         <tbody>
 
@@ -893,19 +1137,27 @@ function e($value): string {
                                 <tr>
 
                                     <td>
-                                        <strong><?= e($bhw["full_name"]) ?></strong>
+                                        <strong>
+                                            <?= e($bhw["full_name"]) ?>
+                                        </strong>
                                     </td>
 
-                                    <td><?= e($bhw["email"]) ?></td>
+                                    <td>
+                                        <?= e($bhw["email"]) ?>
+                                    </td>
 
-                                    <td><?= e($bhw["contact_number"]) ?></td>
+                                    <td>
+                                        <?= e($bhw["contact_number"]) ?>
+                                    </td>
 
-                                    <td><?= e($bhw["position"]) ?></td>
+                                    <td>
+                                        <?= e($bhw["position"]) ?>
+                                    </td>
 
                                     <td>
 
                                         <?php if (
-                                            strcasecmp(trim($bhw["status"]), "Active") === 0
+                                            strcasecmp(trim((string)$bhw["status"]), "Active") === 0
                                         ): ?>
 
                                             <span class="status active">
@@ -922,28 +1174,37 @@ function e($value): string {
 
                                     </td>
 
+
                                     <td>
 
                                         <?php if (
-                                            strcasecmp(trim($bhw["status"]), "Inactive") === 0
+                                            strcasecmp(trim((string)$bhw["status"]), "Inactive") === 0
                                         ): ?>
 
-                                            <form method="POST">
+                                            <form method="POST" action="">
 
-                                                <input type="hidden"
-                                                       name="csrf_token"
-                                                       value="<?= e($csrfToken) ?>">
+                                                <input
+                                                    type="hidden"
+                                                    name="csrf_token"
+                                                    value="<?= e($csrfToken) ?>"
+                                                >
 
-                                                <input type="hidden"
-                                                       name="action"
-                                                       value="approve">
+                                                <input
+                                                    type="hidden"
+                                                    name="action"
+                                                    value="approve"
+                                                >
 
-                                                <input type="hidden"
-                                                       name="bhw_id"
-                                                       value="<?= (int)$bhw["id"] ?>">
+                                                <input
+                                                    type="hidden"
+                                                    name="bhw_id"
+                                                    value="<?= (int)$bhw["id"] ?>"
+                                                >
 
-                                                <button type="submit"
-                                                        class="approve-button">
+                                                <button
+                                                    type="submit"
+                                                    class="approve-button"
+                                                >
                                                     Approve
                                                 </button>
 
@@ -966,9 +1227,11 @@ function e($value): string {
                         <?php else: ?>
 
                             <tr>
+
                                 <td colspan="6" class="empty-row">
                                     No BHW accounts registered yet.
                                 </td>
+
                             </tr>
 
                         <?php endif; ?>
@@ -981,10 +1244,15 @@ function e($value): string {
 
             </section>
 
+
             <!-- FOOTER -->
+
             <footer>
-                © <?= date("Y") ?> Barangay Health Management System.
+
+                © <?= date("Y") ?> Barangay Guindacpan Health Management System.
+
                 All rights reserved.
+
             </footer>
 
         </div>

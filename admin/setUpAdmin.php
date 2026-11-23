@@ -1,29 +1,74 @@
 
 <?php
-session_start();
+// ==================================================
+// BARANGAY GUINDACPAN
+// ADMIN ACCOUNT SETUP
+// PDO VERSION
+// Database: barangay_db
+// ==================================================
 
-require_once __DIR__ . '/../db.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_name("BARANGAY_ADMIN_SETUP_SESSION");
+
+    session_set_cookie_params([
+        "lifetime" => 0,
+        "path" => "/",
+        "secure" => !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off",
+        "httponly" => true,
+        "samesite" => "Strict"
+    ]);
+
+    session_start();
+}
 
 // Prevent browser caching
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("X-Content-Type-Options: nosniff");
 
+require_once __DIR__ . "/../db.php";
+
+if (!isset($pdo) || !($pdo instanceof PDO)) {
+    error_log("PDO connection missing in admin/setUpAdmin.php");
+    http_response_code(500);
+    exit("Database connection error. Please contact the administrator.");
+}
+
 $message = "";
 $messageType = "";
 
-// CHANGE THIS TO YOUR OWN PRIVATE SECRET KEY
-$setupKey =  "GuindacpanAdmin2026!SecureKey";
-// Check if an admin account already exists
-$checkAdmin = mysqli_query($conn, "SELECT id FROM admin_users LIMIT 1");
+// IMPORTANT:
+// Change this setup key to a new private secret.
+// Do not share it publicly.
+$setupKey = "GuindacpanAdmin2026!SecureKey";
 
-if (!$checkAdmin) {
-    die("Database error: " . htmlspecialchars(mysqli_error($conn)));
+// Generate CSRF token
+if (empty($_SESSION["admin_setup_token"])) {
+    $_SESSION["admin_setup_token"] = bin2hex(random_bytes(32));
 }
 
-$adminExists = mysqli_num_rows($checkAdmin) > 0;
+// ==================================================
+// CHECK EXISTING ADMIN ACCOUNT
+// ==================================================
 
-// Process registration
+try {
+    $checkAdmin = $pdo->query(
+        "SELECT id FROM admin_users LIMIT 1"
+    );
+
+    $adminExists = (bool) $checkAdmin->fetch();
+
+} catch (PDOException $e) {
+    error_log("Admin setup check error: " . $e->getMessage());
+
+    http_response_code(500);
+    exit("Database error. Please check the admin_users table.");
+}
+
+// ==================================================
+// PROCESS ADMIN REGISTRATION
+// ==================================================
+
 if ($_SERVER["REQUEST_METHOD"] === "POST" && !$adminExists) {
 
     $fullName = trim($_POST["full_name"] ?? "");
@@ -31,13 +76,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !$adminExists) {
     $password = $_POST["password"] ?? "";
     $confirmPassword = $_POST["confirm_password"] ?? "";
     $enteredKey = $_POST["setup_key"] ?? "";
+    $csrfToken = $_POST["csrf_token"] ?? "";
 
-    if (!hash_equals($setupKey, $enteredKey)) {
+    if (
+        empty($_SESSION["admin_setup_token"]) ||
+        !hash_equals($_SESSION["admin_setup_token"], $csrfToken)
+    ) {
+        $message = "Invalid request. Please refresh the page.";
+        $messageType = "error";
+
+    } elseif (!hash_equals($setupKey, $enteredKey)) {
         $message = "Invalid setup key.";
         $messageType = "error";
 
     } elseif ($fullName === "" || $username === "" || $password === "") {
         $message = "Please complete all required fields.";
+        $messageType = "error";
+
+    } elseif (strlen($fullName) > 150) {
+        $message = "Full name must not exceed 150 characters.";
         $messageType = "error";
 
     } elseif (strlen($username) < 4 || strlen($username) > 50) {
@@ -58,45 +115,79 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !$adminExists) {
 
     } else {
 
-        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-
-        if ($hashedPassword === false) {
-            $message = "Unable to secure the password.";
-            $messageType = "error";
-        } else {
-
-            $stmt = mysqli_prepare(
-                $conn,
-                "INSERT INTO admin_users (full_name, username, password)
-                 VALUES (?, ?, ?)"
+        try {
+            // Check duplicate username
+            $checkUsername = $pdo->prepare(
+                "SELECT id
+                 FROM admin_users
+                 WHERE username = :username
+                 LIMIT 1"
             );
 
-            if (!$stmt) {
-                $message = "Database error. Please try again.";
+            $checkUsername->execute([
+                ":username" => $username
+            ]);
+
+            if ($checkUsername->fetch()) {
+
+                $message = "Username already exists. Please choose another.";
                 $messageType = "error";
+
             } else {
 
-                mysqli_stmt_bind_param(
-                    $stmt,
-                    "sss",
-                    $fullName,
-                    $username,
-                    $hashedPassword
+                $hashedPassword = password_hash(
+                    $password,
+                    PASSWORD_DEFAULT
                 );
 
-                if (mysqli_stmt_execute($stmt)) {
+                if ($hashedPassword === false) {
+
+                    $message = "Unable to secure the password.";
+                    $messageType = "error";
+
+                } else {
+
+                    // Insert administrator
+                    $stmt = $pdo->prepare(
+                        "INSERT INTO admin_users
+                            (full_name, username, password)
+                         VALUES
+                            (:full_name, :username, :password)"
+                    );
+
+                    $stmt->execute([
+                        ":full_name" => $fullName,
+                        ":username" => $username,
+                        ":password" => $hashedPassword
+                    ]);
+
                     $message = "Admin account created successfully! You can now log in.";
                     $messageType = "success";
                     $adminExists = true;
-                } else {
-                    $message = "Unable to create account. Username may already exist.";
-                    $messageType = "error";
-                }
 
-                mysqli_stmt_close($stmt);
+                    // Invalidate setup token after successful registration
+                    unset($_SESSION["admin_setup_token"]);
+                }
             }
+
+        } catch (PDOException $e) {
+
+            error_log("Admin registration error: " . $e->getMessage());
+
+            if ($e->getCode() === "23000") {
+                $message = "Username already exists. Please choose another.";
+            } else {
+                $message = "Unable to create account. Please check your database table.";
+            }
+
+            $messageType = "error";
         }
     }
+}
+
+// Refresh token if still needed
+if (!$adminExists && empty($_SESSION["admin_setup_token"])) {
+    $_SESSION["admin_setup_token"] = bin2hex(random_bytes(32));
 }
 ?>
 
@@ -129,16 +220,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !$adminExists) {
 
         <?php if ($message !== ""): ?>
             <div class="mb-5 p-3 rounded-lg text-sm
-                <?= $messageType === 'success'
-                    ? 'bg-green-900/40 text-green-300 border border-green-700'
-                    : 'bg-red-900/40 text-red-300 border border-red-700' ?>">
-                <?= htmlspecialchars($message, ENT_QUOTES, 'UTF-8') ?>
+                <?= $messageType === "success"
+                    ? "bg-green-900/40 text-green-300 border border-green-700"
+                    : "bg-red-900/40 text-red-300 border border-red-700" ?>">
+
+                <?= htmlspecialchars($message, ENT_QUOTES, "UTF-8") ?>
+
             </div>
         <?php endif; ?>
 
         <?php if ($adminExists): ?>
 
             <div class="text-center">
+
                 <p class="text-green-400 mb-5">
                     An admin account already exists. Admin setup is closed.
                 </p>
@@ -147,11 +241,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && !$adminExists) {
                    class="block w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">
                     Go to Admin Login
                 </a>
+
             </div>
 
         <?php else: ?>
 
             <form method="POST" action="" class="space-y-4">
+
+                <input
+                    type="hidden"
+                    name="csrf_token"
+                    value="<?= htmlspecialchars($_SESSION["admin_setup_token"], ENT_QUOTES, "UTF-8") ?>"
+                >
 
                 <div>
                     <label class="block text-sm text-slate-300 mb-2">

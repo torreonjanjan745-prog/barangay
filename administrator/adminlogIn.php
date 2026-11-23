@@ -1,15 +1,22 @@
 
 <?php
-// =============================================
-// ADMINISTRATOR LOGIN SYSTEM - PDO
+// ==================================================
 // BARANGAY GUINDACPAN
-// =============================================
+// ADMINISTRATOR LOGIN SYSTEM
+// COMPLETE SECURE PDO VERSION
+//
+// Database: barangay_health_db
+// Table: admin_account
+// Authentication: Full Name + BCRYPT Password
+// ==================================================
 
-// SESSION CONFIGURATION
-$isHttps = (
-    isset($_SERVER["HTTPS"]) &&
-    $_SERVER["HTTPS"] !== "off"
-);
+
+// ==================================================
+// 1. SESSION SECURITY
+// ==================================================
+
+$isHttps = !empty($_SERVER["HTTPS"]) &&
+           $_SERVER["HTTPS"] !== "off";
 
 if (session_status() === PHP_SESSION_NONE) {
 
@@ -30,49 +37,94 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// SECURITY HEADERS
+
+// ==================================================
+// 2. SECURITY HEADERS
+// ==================================================
+
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("X-Content-Type-Options: nosniff");
 header("X-Frame-Options: DENY");
 header("Referrer-Policy: no-referrer");
 
-// DATABASE CONNECTION
-require_once __DIR__ . "/../db.php";
 
-if (!isset($pdo) || !($pdo instanceof PDO)) {
-    error_log("Admin Login: PDO connection unavailable.");
+// ==================================================
+// 3. DATABASE CONNECTION
+// ==================================================
+
+try {
+
+    $adminPDO = new PDO(
+        "mysql:host=localhost;port=3306;dbname=barangay_health_db;charset=utf8mb4",
+        "root",
+        "",
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false
+        ]
+    );
+
+} catch (PDOException $e) {
+
+    error_log("ADMIN DATABASE ERROR: " . $e->getMessage());
+
     http_response_code(500);
-    exit("Database connection error. Please check db.php.");
+
+    exit("Administrator database connection failed. Please contact the system administrator.");
+
 }
 
-// CHECK EXISTING ADMIN SESSION
-if (isset($_SESSION["admin_id"])) {
+
+// ==================================================
+// 4. REDIRECT IF ALREADY LOGGED IN
+// ==================================================
+
+if (!empty($_SESSION["admin_id"])) {
+
     header("Location: dashboard.php");
     exit;
+
 }
 
-// INITIAL VALUES
+
+// ==================================================
+// 5. INITIAL VARIABLES
+// ==================================================
+
 $message = "";
-$username = "";
+$fullName = "";
 
-// CSRF TOKEN
-if (empty($_SESSION["admin_login_csrf"])) {
-    $_SESSION["admin_login_csrf"] = bin2hex(random_bytes(32));
+
+// ==================================================
+// 6. CSRF TOKEN
+// ==================================================
+
+if (
+    empty($_SESSION["admin_login_csrf"]) ||
+    !is_string($_SESSION["admin_login_csrf"])
+) {
+
+    $_SESSION["admin_login_csrf"] = bin2hex(
+        random_bytes(32)
+    );
+
 }
 
-// =============================================
-// HANDLE ADMIN LOGIN
-// =============================================
+
+// ==================================================
+// 7. LOGIN PROCESS
+// ==================================================
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $usernameInput = $_POST["username"] ?? "";
+    $fullNameInput = $_POST["full_name"] ?? "";
     $passwordInput = $_POST["password"] ?? "";
     $tokenInput = $_POST["csrf_token"] ?? "";
 
-    $username = is_string($usernameInput)
-        ? trim($usernameInput)
+    $fullName = is_string($fullNameInput)
+        ? trim($fullNameInput)
         : "";
 
     $password = is_string($passwordInput)
@@ -83,84 +135,243 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         ? $tokenInput
         : "";
 
-    // CSRF VALIDATION
-    if (
-        !hash_equals(
-            $_SESSION["admin_login_csrf"],
-            $token
-        )
-    ) {
 
-        $message = "Invalid request. Please refresh the page.";
+    try {
 
-    } elseif ($username === "" || $password === "") {
+        // ------------------------------------------
+        // VALIDATE CSRF TOKEN
+        // ------------------------------------------
 
-        $message = "Please enter your username and password.";
+        if (
+            !isset($_SESSION["admin_login_csrf"]) ||
+            !is_string($_SESSION["admin_login_csrf"]) ||
+            !hash_equals(
+                $_SESSION["admin_login_csrf"],
+                $token
+            )
+        ) {
 
-    } else {
+            $message = "Invalid request. Please refresh the page.";
 
-        try {
+        } elseif ($fullName === "" || $password === "") {
 
-            // FIND ADMIN ACCOUNT
-            $stmt = $pdo->prepare(
-                "SELECT
+            $message = "Please enter your full name and password.";
+
+        } elseif (
+            strlen($fullName) > 150 ||
+            strlen($password) > 4096
+        ) {
+
+            $message = "Invalid login information.";
+
+        } else {
+
+            // --------------------------------------
+            // FIND ADMINISTRATOR
+            // FULL NAME AUTHENTICATION ONLY
+            // --------------------------------------
+
+            $stmt = $adminPDO->prepare("
+                SELECT
                     id,
                     full_name,
-                    username,
-                    password
-                 FROM admin_users
-                 WHERE username = :username
-                 LIMIT 1"
-            );
+                    password,
+                    status
+                FROM admin_account
+                WHERE TRIM(full_name) = :full_name
+                LIMIT 1
+            ");
 
             $stmt->execute([
-                ":username" => $username
+                ":full_name" => $fullName
             ]);
 
-            $admin = $stmt->fetch();
+            $admin = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            // VERIFY PASSWORD
-            if (
-                $admin &&
-                password_verify($password, $admin["password"])
+
+            // --------------------------------------
+            // CHECK ACCOUNT
+            // --------------------------------------
+
+            if (!$admin) {
+
+                error_log(
+                    "ADMIN LOGIN: No matching full name found."
+                );
+
+                $message = "Invalid full name or password.";
+
+            } elseif (
+                !isset(
+                    $admin["id"],
+                    $admin["full_name"],
+                    $admin["password"],
+                    $admin["status"]
+                )
             ) {
 
-                // REGENERATE SESSION ID
-                session_regenerate_id(true);
+                error_log(
+                    "ADMIN LOGIN: Required account columns missing."
+                );
 
-                // ADMIN SESSION
-                $_SESSION["admin_id"] = (int)$admin["id"];
-                $_SESSION["admin_name"] = $admin["full_name"];
-                $_SESSION["admin_username"] = $admin["username"];
-                $_SESSION["admin_role"] = "Administrator";
+                $message = "Administrator account configuration error.";
 
-                $_SESSION["admin_login_time"] = time();
-                $_SESSION["admin_last_activity"] = time();
+            } elseif (
+                strtolower(trim((string)$admin["status"])) !== "active"
+            ) {
 
-                // ROTATE CSRF TOKEN
-                $_SESSION["admin_login_csrf"] = bin2hex(random_bytes(32));
+                error_log(
+                    "ADMIN LOGIN: Administrator account is inactive."
+                );
 
-                // REDIRECT TO DASHBOARD
-                header("Location: dashboard.php");
-                exit;
+                $message = "Your administrator account is inactive.";
 
             } else {
 
-                $message = "Invalid username or password.";
+                // ----------------------------------
+                // BCRYPT PASSWORD VERIFICATION
+                // ----------------------------------
+
+                $storedPassword = (string)$admin["password"];
+
+                $passwordValid = password_verify(
+                    $password,
+                    $storedPassword
+                );
+
+
+                if (!$passwordValid) {
+
+                    error_log(
+                        "ADMIN LOGIN: Password verification failed. Admin ID: " .
+                        (int)$admin["id"]
+                    );
+
+                    $message = "Invalid full name or password.";
+
+                } else {
+
+                    // --------------------------------
+                    // OPTIONAL PASSWORD HASH UPGRADE
+                    // --------------------------------
+
+                    if (password_needs_rehash(
+                        $storedPassword,
+                        PASSWORD_DEFAULT
+                    )) {
+
+                        $newHash = password_hash(
+                            $password,
+                            PASSWORD_DEFAULT
+                        );
+
+                        if ($newHash === false) {
+                            throw new RuntimeException(
+                                "Password rehash failed."
+                            );
+                        }
+
+                        $update = $adminPDO->prepare("
+                            UPDATE admin_account
+                            SET password = :password
+                            WHERE id = :id
+                        ");
+
+                        $update->execute([
+                            ":password" => $newHash,
+                            ":id" => (int)$admin["id"]
+                        ]);
+                    }
+
+
+                    // --------------------------------
+                    // REGENERATE SESSION ID
+                    // --------------------------------
+
+                    if (!session_regenerate_id(true)) {
+
+                        throw new RuntimeException(
+                            "Session regeneration failed."
+                        );
+
+                    }
+
+
+                    // --------------------------------
+                    // STORE ADMIN SESSION
+                    // --------------------------------
+
+                    $_SESSION["admin_id"] =
+                        (int)$admin["id"];
+
+                    $_SESSION["admin_name"] =
+                        $admin["full_name"];
+
+                    // Optional profile fields
+                    $_SESSION["admin_email"] =
+                        $admin["email"] ?? "";
+
+                    $_SESSION["admin_contact"] =
+                        $admin["contact_number"] ?? "";
+
+                    $_SESSION["admin_position"] =
+                        $admin["position"] ?? "";
+
+                    $_SESSION["admin_login_time"] = time();
+
+                    $_SESSION["admin_last_activity"] = time();
+
+
+                    // --------------------------------
+                    // ROTATE CSRF TOKEN
+                    // --------------------------------
+
+                    $_SESSION["admin_login_csrf"] =
+                        bin2hex(random_bytes(32));
+
+
+                    // --------------------------------
+                    // REDIRECT TO DASHBOARD
+                    // --------------------------------
+
+                    header("Location: dashboard.php");
+                    exit;
+
+                }
 
             }
 
-        } catch (PDOException $e) {
-
-            error_log("Admin Login Database Error: " . $e->getMessage());
-
-            $message = "Unable to process login. Please check the database table.";
         }
+
+    } catch (PDOException $e) {
+
+        error_log(
+            "ADMIN LOGIN DATABASE ERROR: " . $e->getMessage()
+        );
+
+        $message = "Unable to process login. Please contact the administrator.";
+
+    } catch (Throwable $e) {
+
+        error_log(
+            "ADMIN LOGIN SYSTEM ERROR: " . $e->getMessage()
+        );
+
+        $message = "An unexpected error occurred. Please try again.";
+
     }
 
-    // ROTATE CSRF TOKEN
-    $_SESSION["admin_login_csrf"] = bin2hex(random_bytes(32));
+
+    // ----------------------------------------------
+    // ROTATE CSRF TOKEN AFTER POST
+    // ----------------------------------------------
+
+    $_SESSION["admin_login_csrf"] = bin2hex(
+        random_bytes(32)
+    );
+
 }
+
 ?>
 
 <!DOCTYPE html>
@@ -169,134 +380,387 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <head>
 
     <meta charset="UTF-8">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Administrator Login | Barangay Health System</title>
+    <meta name="robots" content="noindex, nofollow">
+
+    <title>Administrator Login | Barangay Guindacpan</title>
 
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
 
-        body {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 25px;
-            background: #000000;
-            font-family: Arial, sans-serif;
-        }
+       
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
 
-        .login-container {
-            width: 100%;
-            max-width: 430px;
-            background: #ffffff;
-            padding: 38px;
-            border-radius: 18px;
-            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.10);
-        }
+:root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --text-dark: #0f172a;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --surface: #ffffff;
+}
 
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
+body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 20px;
+    font-family: Arial, Helvetica, sans-serif;
 
-        .logo {
-            width: 68px;
-            height: 68px;
-            margin: 0 auto 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #dbeafe;
-            color: #1d4ed8;
-            border-radius: 18px;
-            font-size: 34px;
-        }
+    background:
+        radial-gradient(
+            ellipse at 15% 15%,
+            rgba(37, 99, 235, .22),
+            transparent 38%
+        ),
+        radial-gradient(
+            ellipse at 85% 85%,
+            rgba(16, 185, 129, .12),
+            transparent 35%
+        ),
+        linear-gradient(135deg, #07111f, #101d32 55%, #0b1728);
+}
 
-        h1 {
-            font-size: 24px;
-            color: #111827;
-            margin-bottom: 10px;
-        }
+/* MAIN LOGIN CARD */
 
-        .subtitle {
-            color: #64748b;
-            font-size: 13px;
-            line-height: 1.5;
-        }
+.login-container {
+    width: 100%;
+    max-width: 460px;
+    padding: 42px 42px 30px;
 
-        .error-message {
-            padding: 13px;
-            margin-bottom: 20px;
-            border-radius: 9px;
-            color: #b91c1c;
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            font-size: 13px;
-        }
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,.7);
+    border-radius: 24px;
 
-        .form-group {
-            margin-bottom: 20px;
-        }
+    box-shadow:
+        0 30px 80px rgba(0,0,0,.35),
+        0 8px 25px rgba(0,0,0,.12);
 
-        label {
-            display: block;
-            margin-bottom: 9px;
-            font-size: 14px;
-            font-weight: bold;
-            color: #374151;
-        }
+    position: relative;
+    overflow: hidden;
 
-        input {
-            width: 100%;
-            padding: 14px;
-            border: 1px solid #d1d5db;
-            border-radius: 10px;
-            font-size: 14px;
-            outline: none;
-        }
+    animation: fadeUp .55s ease;
+}
 
-        input:focus {
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-        }
+.login-container::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 5px;
 
-        button {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 10px;
-            background: #1d4ed8;
-            color: white;
-            font-size: 15px;
-            font-weight: bold;
-            cursor: pointer;
-        }
+    background: linear-gradient(
+        90deg,
+        #1d4ed8,
+        #3b82f6,
+        #10b981
+    );
+}
 
-        button:hover {
-            background: #1e40af;
-        }
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
 
-        .footer {
-            margin-top: 27px;
-            text-align: center;
-            font-size: 13px;
-            color: #64748b;
-        }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
-        @media (max-width: 480px) {
-            .login-container {
-                padding: 27px 22px;
-            }
+/* HEADER */
 
-            h1 {
-                font-size: 21px;
-            }
-        }
+.header {
+    text-align: center;
+    margin-bottom: 34px;
+}
+
+.logo {
+    width: 108px;
+    height: 108px;
+    margin: 0 auto 22px;
+    padding: 10px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 50%;
+
+    box-shadow:
+        0 8px 20px rgba(15,23,42,.07),
+        inset 0 0 0 5px #ffffff;
+
+    overflow: hidden;
+}
+
+.logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+h1 {
+    color: var(--text-dark);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -.7px;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    max-width: 290px;
+    margin: 0 auto;
+
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+/* ERROR MESSAGE */
+
+.error-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+
+    padding: 14px 15px;
+    margin-bottom: 23px;
+
+    color: #b91c1c;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 11px;
+
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* FORM */
+
+form {
+    width: 100%;
+}
+
+.form-group {
+    margin-bottom: 23px;
+}
+
+label {
+    display: block;
+    margin-bottom: 10px;
+
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* INPUT */
+
+input {
+    width: 100%;
+    height: 52px;
+    padding: 0 16px;
+
+    color: #0f172a;
+    background: #f8fafc;
+
+    border: 1px solid #dbe3ee;
+    border-radius: 11px;
+
+    font-family: inherit;
+    font-size: 14px;
+
+    outline: none;
+    transition: all .2s ease;
+}
+
+input::placeholder {
+    color: #94a3b8;
+}
+
+input:hover {
+    border-color: #94a3b8;
+    background: #ffffff;
+}
+
+input:focus {
+    background: #ffffff;
+    border-color: var(--primary);
+
+    box-shadow:
+        0 0 0 4px rgba(37,99,235,.10);
+}
+
+/* PASSWORD */
+
+.password-wrapper {
+    position: relative;
+}
+
+.password-wrapper input {
+    padding-right: 52px;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+
+    width: 34px;
+    height: 34px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: #64748b;
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+
+    cursor: pointer;
+    transition: .2s;
+}
+
+.toggle-password:hover {
+    color: var(--primary);
+    background: #eff6ff;
+}
+
+.toggle-password svg {
+    width: 21px;
+    height: 21px;
+}
+
+.toggle-password:focus-visible {
+    outline: 3px solid rgba(37,99,235,.25);
+    outline-offset: 2px;
+}
+
+/* LOGIN BUTTON */
+
+.login-button {
+    width: 100%;
+    min-height: 53px;
+    padding: 15px;
+
+    border: none;
+    border-radius: 11px;
+
+    background: linear-gradient(
+        135deg,
+        #2563eb,
+        #1d4ed8
+    );
+
+    color: #ffffff;
+
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: .7px;
+
+    cursor: pointer;
+    transition: all .25s ease;
+
+    box-shadow:
+        0 7px 16px rgba(37,99,235,.22);
+}
+
+.login-button:hover {
+    background: linear-gradient(
+        135deg,
+        #1d4ed8,
+        #1e40af
+    );
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 10px 22px rgba(37,99,235,.30);
+}
+
+.login-button:active {
+    transform: translateY(0);
+}
+
+.login-button:focus-visible {
+    outline: 3px solid rgba(37,99,235,.3);
+    outline-offset: 3px;
+}
+
+/* FOOTER */
+
+.footer {
+    margin-top: 30px;
+    padding-top: 20px;
+
+    border-top: 1px solid #edf0f4;
+
+    text-align: center;
+    color: #64748b;
+
+    font-size: 12px;
+    line-height: 1.9;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 480px) {
+    body {
+        padding: 16px;
+    }
+
+    .login-container {
+        padding: 34px 24px 25px;
+        border-radius: 19px;
+    }
+
+    .logo {
+        width: 90px;
+        height: 90px;
+    }
+
+    h1 {
+        font-size: 23px;
+    }
+
+    .header {
+        margin-bottom: 29px;
+    }
+}
+
+@media (max-width: 350px) {
+    .login-container {
+        padding: 30px 19px 22px;
+    }
+
+    h1 {
+        font-size: 21px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+    }
+}
+
+
     </style>
 
 </head>
@@ -305,10 +769,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     <main class="login-container">
 
+        <!-- HEADER -->
+
         <div class="header">
 
             <div class="logo">
-                🛡️
+
+                <img
+                    src="../asset/logo.png"
+                    alt="Barangay Guindacpan Logo"
+                >
+
             </div>
 
             <h1>Administrator Login</h1>
@@ -318,6 +789,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             </p>
 
         </div>
+
+
+        <!-- ERROR MESSAGE -->
 
         <?php if ($message !== ""): ?>
 
@@ -333,6 +807,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <?php endif; ?>
 
+
+        <!-- LOGIN FORM -->
+
         <form method="POST" action="">
 
             <input
@@ -342,29 +819,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $_SESSION["admin_login_csrf"],
                     ENT_QUOTES,
                     "UTF-8"
-                ) ?>">
+                ) ?>"
+            >
+
+
+            <!-- FULL NAME -->
 
             <div class="form-group">
 
-                <label for="username">
-                    Admin Username
+                <label for="full_name">
+                    Full Name
                 </label>
 
                 <input
                     type="text"
-                    id="username"
-                    name="username"
+                    id="full_name"
+                    name="full_name"
                     value="<?= htmlspecialchars(
-                        $username,
+                        $fullName,
                         ENT_QUOTES,
                         "UTF-8"
                     ) ?>"
-                    placeholder="Enter your admin username"
-                    maxlength="100"
-                    autocomplete="username"
-                    required>
+                    placeholder="Enter your full name"
+                    maxlength="150"
+                    autocomplete="name"
+                    required
+                    autofocus
+                >
 
             </div>
+
+
+            <!-- PASSWORD -->
 
             <div class="form-group">
 
@@ -372,27 +858,131 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     Password
                 </label>
 
-                <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    placeholder="Enter your password"
-                    autocomplete="current-password"
-                    required>
+                <div class="password-wrapper">
+
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="Enter your password"
+                        autocomplete="current-password"
+                        required
+                    >
+
+                    <button
+                        type="button"
+                        class="toggle-password"
+                        id="togglePassword"
+                        aria-label="Show password"
+                        aria-pressed="false"
+                    >
+
+                        <svg
+                            id="eyeIcon"
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                        >
+
+                            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/>
+
+                            <circle cx="12" cy="12" r="3"/>
+
+                        </svg>
+
+                    </button>
+
+                </div>
 
             </div>
 
-            <button type="submit">
+
+            <!-- LOGIN BUTTON -->
+
+            <button
+                type="submit"
+                class="login-button"
+            >
                 SIGN IN TO ADMIN PORTAL
             </button>
 
         </form>
 
+
+        <!-- FOOTER -->
+
         <div class="footer">
+
             Barangay Guindacpan Administrator Portal
+
+            <br>
+
+            Authorized personnel only.
+
         </div>
 
     </main>
 
+
+    <!-- SHOW / HIDE PASSWORD -->
+
+    <script>
+
+        const passwordInput =
+            document.getElementById("password");
+
+        const togglePassword =
+            document.getElementById("togglePassword");
+
+        const eyeIcon =
+            document.getElementById("eyeIcon");
+
+
+        togglePassword.addEventListener("click", function () {
+
+            const isHidden =
+                passwordInput.type === "password";
+
+            passwordInput.type =
+                isHidden ? "text" : "password";
+
+            togglePassword.setAttribute(
+                "aria-label",
+                isHidden ? "Hide password" : "Show password"
+            );
+
+            togglePassword.setAttribute(
+                "aria-pressed",
+                isHidden ? "true" : "false"
+            );
+
+            if (isHidden) {
+
+                eyeIcon.innerHTML = `
+                    <path d="M3 3l18 18"/>
+                    <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/>
+                    <path d="M9.9 5.2A11 11 0 0 1 12 5c6.4 0 10 7 10 7a13 13 0 0 1-3.1 3.8"/>
+                    <path d="M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a10 10 0 0 0 3.1-.5"/>
+                `;
+
+            } else {
+
+                eyeIcon.innerHTML = `
+                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                `;
+
+            }
+
+        });
+
+    </script>
+
 </body>
+
 </html>

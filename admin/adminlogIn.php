@@ -458,7 +458,7 @@ body {
 
         <div class="logo-container">
             <img
-                src="../asset/logo.jpg"
+                src="../asset/logo.png"
                 alt="Barangay Guindacpan Logo"
             >
         </div>

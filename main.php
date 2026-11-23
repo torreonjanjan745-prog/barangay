@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Barangay Guindacpan | Official Website</title>
-
+    <link rel="icon" type="image/png" href="asset/logo.png">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
@@ -109,7 +109,7 @@
                 <a href="main.php" class="flex items-center gap-3">
 
                     <img
-                        src="asset/logo.jpg"
+                        src="asset/logo.png"
                         alt="Barangay Guindacpan Logo"
                         class="w-12 h-12 md:w-14 md:h-14 rounded-full border-2 border-gold object-cover"
                     >
@@ -213,6 +213,7 @@
         </div>
 
     </nav>
+
     <!-- ==========================================
          HERO SECTION WITH IMAGE SLIDESHOW
     =========================================== -->
@@ -275,16 +276,15 @@
                     <!-- HERO BUTTONS -->
 
                     <div class="flex flex-col sm:flex-row gap-3 mt-8">
+                    <a
+    href="administrator/request.php"
+    class="bg-gold hover:bg-gold2 text-white px-7 py-3.5 rounded-lg font-bold text-sm text-center shadow-lg transition"
+>
+    📋 Request a Document
+</a>
 
                         <a
-                            href="services.php"
-                            class="bg-gold hover:bg-gold2 text-white px-7 py-3.5 rounded-lg font-bold text-sm text-center shadow-lg transition"
-                        >
-                            📋 Request a Document
-                        </a>
-
-                        <a
-                            href="track.php"
+                            href="track/tracking.php"
                             class="bg-white/10 hover:bg-white/20 border border-white/40 text-white px-7 py-3.5 rounded-lg font-bold text-sm text-center transition backdrop-blur-sm"
                         >
                             🔍 Track Your Request
@@ -644,7 +644,7 @@
                 <div class="md:col-span-2">
 
                     <img
-                        src="asset/kapitan.jpg"
+                        src="asset/me.png"
                         alt="Punong Barangay"
                         class="w-full h-72 md:h-full object-cover"
                     >
@@ -658,7 +658,7 @@
                     </span>
 
                     <h3 class="text-3xl font-extrabold text-green900 mt-4">
-                        Hon. Pedro M. Dela Cruz
+                        Hon. Processo P. Cajes
                     </h3>
 
                     <p class="text-sm text-gold font-semibold mt-2">
@@ -1235,7 +1235,7 @@
                     <div class="flex items-center gap-3">
 
                         <img
-                            src="asset/logo.jpg"
+                            src="asset/logo.png"
                             alt="Barangay Logo"
                             class="w-14 h-14 rounded-full border-2 border-gold object-cover"
                         >
@@ -1355,15 +1355,19 @@
                     <a href="terms.php" class="hover:text-gold2 transition">
                         Terms of Service
                     </a>
+
                     <a href="admin/dashboard.php" class="hover:text-gold2 transition">
-                   Secretary Portal
-    </a>
-    <a href="bhw/create.php" class="hover:text-gold2 transition">
-                  BHW Portal
-    </a>
-    <a href="administrator/CreatAdmin.php" class="hover:text-gold2 transition">
-               Administrator
-    </a>
+                        Secretary Portal
+                    </a>
+
+                    <a href="bhw/create.php" class="hover:text-gold2 transition">
+                        BHW Portal
+                    </a>
+
+                    <a href="administrator/CreatAdmin.php" class="hover:text-gold2 transition">
+                        Administrator
+                    </a>
+
                 </div>
 
             </div>
@@ -1375,124 +1379,395 @@
 
     <!-- ==========================================
          RESIDENT CREATE ACCOUNT MODAL
+         UPDATED FORM DESIGN ONLY
     =========================================== -->
 
     <div
         id="residentLogin"
-        class="hidden fixed inset-0 z-[100] bg-black/60 items-center justify-center p-4"
+        class="hidden fixed inset-0 z-[100] bg-black/70 items-center justify-center p-3 sm:p-5"
         role="dialog"
         aria-modal="true"
         aria-labelledby="residentLoginTitle"
     >
-    <div class="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-7 shadow-2xl">
 
-            <!-- CLOSE BUTTON -->
-            <button
-                type="button"
-                id="closeLogin"
-                class="absolute right-4 top-3 text-3xl leading-none text-gray-400 hover:text-gray-700"
-                aria-label="Close registration form"
-            >
-                &times;
-            </button>
+        <div class="relative w-full max-w-2xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
 
-            <!-- FORM HEADER -->
-            <div class="mb-6 text-center">
-                <img
-                    src="asset/logo.jpg"
-                    alt="Barangay Guindacpan Logo"
-                    class="mx-auto mb-3 h-16 w-16 rounded-full border-2 border-gold object-cover"
+            <!-- HEADER -->
+
+            <div class="relative overflow-hidden bg-green900 px-6 py-8 sm:px-10">
+
+                <div class="absolute -right-12 -top-16 h-48 w-48 rounded-full border-[25px] border-white/5"></div>
+
+                <div class="absolute -bottom-20 -left-10 h-40 w-40 rounded-full bg-gold/10"></div>
+
+                <!-- CLOSE BUTTON -->
+
+                <button
+                    type="button"
+                    id="closeLogin"
+                    class="absolute right-5 top-5 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-2xl text-white transition hover:bg-white/20"
+                    aria-label="Close registration form"
                 >
-
-                <h2
-                    id="residentLoginTitle"
-                    class="text-2xl font-extrabold text-green900 whitespace-nowrap"
-                >
-                    CREATE BARANGAY ACCOUNT
-                </h2>
-
-                <p class="mt-2 text-sm text-gray-500">
-                    Register your account to access resident services.
-                </p>
-            </div>
-
-            <!-- REGISTRATION FORM -->
-            <!-- Sends registration details to the root-level LogIn.php handler. -->
-            <form id="residentRegistrationForm" action="LogIn.php" method="POST" class="space-y-4">
-
-                <!-- FULL NAME -->
-                <div>
-                    <label for="residentFullName" class="mb-1 block text-sm font-semibold text-gray-700">Full Name:</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input id="residentFullName" name="fullName" type="text" autocomplete="name" required placeholder="Enter your full name" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
-                    </div>
-                </div>
-
-                <!-- USERNAME -->
-                <div>
-                    <label for="residentUsername" class="mb-1 block text-sm font-semibold text-gray-700">Username:</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-at absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input id="residentUsername" name="username" type="text" autocomplete="username" required placeholder="Enter your username" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
-                    </div>
-                </div>
-
-                <!-- ADDRESS -->
-                <div>
-                    <label for="residentAddress" class="mb-1 block text-sm font-semibold text-gray-700">Purok / Address:</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-location-dot absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input id="residentAddress" name="address" type="text" required placeholder="Enter your purok / address" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
-                    </div>
-                </div>
-
-                <!-- BIRTHDAY -->
-                <div>
-                    <label for="residentBirth" class="mb-1 block text-sm font-semibold text-gray-700">Birthday:</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-calendar-days absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input id="residentBirth" name="birthday" type="date" required class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
-                    </div>
-                </div>
-
-                <!-- PASSWORD -->
-                <div>
-                    <label for="residentPassword" class="mb-1 block text-sm font-semibold text-gray-700">Password:</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input id="residentPassword" name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="Create your password" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
-                    </div>
-                </div>
-
-                <!-- CONFIRM PASSWORD -->
-                <div>
-                    <label for="residentConfirm" class="mb-1 block text-sm font-semibold text-gray-700">Confirm Password:</label>
-                    <div class="relative">
-                        <i class="fa-solid fa-shield-halved absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input id="residentConfirm" name="confirm" type="password" autocomplete="new-password" minlength="8" required placeholder="Confirm your password" class="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/20">
-                    </div>
-                </div>
-
-                <!-- CREATE ACCOUNT BUTTON -->
-                <button type="submit" name="register" class="w-full rounded-xl bg-green900 py-3 font-bold text-white transition hover:bg-green800">
-                    CREATE ACCOUNT
+                    &times;
                 </button>
 
-            </form>
+                <!-- FORM HEADER -->
 
-            <!-- REGISTRATION NOTICE -->
-            <p class="mt-5 text-center text-xs text-gray-400">
-                Your registration may require verification by the barangay office.
-            </p>
+                <div class="relative z-10 flex flex-col items-center text-center">
+
+                    <div class="mb-4 rounded-full border-4 border-gold bg-white p-1 shadow-lg">
+
+                        <img
+                            src="asset/logo.png"
+                            alt="Barangay Guindacpan Logo"
+                            class="h-20 w-20 rounded-full object-cover"
+                        >
+
+                    </div>
+
+                    <span class="mb-2 rounded-full border border-white/20 bg-white/10 px-4 py-1 text-[10px] font-bold uppercase tracking-[3px] text-gold2">
+                        Barangay Guindacpan
+                    </span>
+
+                    <h2
+                        id="residentLoginTitle"
+                        class="text-2xl font-extrabold tracking-wide text-white sm:text-3xl"
+                    >
+                        CREATE YOUR ACCOUNT
+                    </h2>
+
+                    <p class="mt-2 max-w-md text-sm leading-relaxed text-white/70">
+                        Register as a resident to access barangay services and manage your requests online.
+                    </p>
+
+                </div>
+
+            </div>
+
+            <!-- FORM CONTENT -->
+
+            <div class="px-5 py-7 sm:px-10 sm:py-9">
+
+                <!-- FORM INTRODUCTION -->
+
+                <div class="mb-7 flex items-start gap-3 rounded-xl border border-green-100 bg-green-50 p-4">
+
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green900 text-white">
+                        <i class="fa-solid fa-user-plus"></i>
+                    </div>
+
+                    <div>
+
+                        <h3 class="font-bold text-green900">
+                            Resident Registration
+                        </h3>
+
+                        <p class="mt-1 text-xs leading-relaxed text-gray-500">
+                            Please provide accurate information. All required fields must be completed.
+                        </p>
+
+                    </div>
+
+                </div>
+
+                <!-- REGISTRATION FORM -->
+
+                <form
+                    id="residentRegistrationForm"
+                    action="LogIn.php"
+                    method="POST"
+                    class="space-y-7"
+                >
+
+                    <!-- PERSONAL INFORMATION -->
+
+                    <div>
+
+                        <div class="mb-5 flex items-center gap-3 border-b border-gray-100 pb-3">
+
+                            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100 text-green900">
+                                <i class="fa-solid fa-id-card"></i>
+                            </div>
+
+                            <div>
+
+                                <h3 class="font-bold text-gray-800">
+                                    Personal Information
+                                </h3>
+
+                                <p class="text-xs text-gray-400">
+                                    Your basic resident details
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+                            <!-- FULL NAME -->
+
+                            <div class="sm:col-span-2">
+
+                                <label for="residentFullName" class="mb-2 block text-sm font-semibold text-gray-700">
+                                    Full Name <span class="text-red-500">*</span>
+                                </label>
+
+                                <div class="relative">
+
+                                    <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        id="residentFullName"
+                                        name="fullName"
+                                        type="text"
+                                        autocomplete="name"
+                                        required
+                                        placeholder="Enter your complete name"
+                                        class="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-11 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-green-700 focus:bg-white focus:ring-4 focus:ring-green-700/10"
+                                    >
+
+                                </div>
+
+                            </div>
+
+                            <!-- USERNAME -->
+
+                            <div>
+
+                                <label for="residentUsername" class="mb-2 block text-sm font-semibold text-gray-700">
+                                    Username <span class="text-red-500">*</span>
+                                </label>
+
+                                <div class="relative">
+
+                                    <i class="fa-solid fa-at absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        id="residentUsername"
+                                        name="username"
+                                        type="text"
+                                        autocomplete="username"
+                                        required
+                                        placeholder="Create a username"
+                                        class="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-11 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-green-700 focus:bg-white focus:ring-4 focus:ring-green-700/10"
+                                    >
+
+                                </div>
+
+                            </div>
+
+                            <!-- BIRTHDAY -->
+
+                            <div>
+
+                                <label for="residentBirth" class="mb-2 block text-sm font-semibold text-gray-700">
+                                    Birthday <span class="text-red-500">*</span>
+                                </label>
+
+                                <div class="relative">
+
+                                    <i class="fa-solid fa-calendar-days absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        id="residentBirth"
+                                        name="birthday"
+                                        type="date"
+                                        required
+                                        class="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-11 pr-4 text-sm text-gray-700 outline-none transition focus:border-green-700 focus:bg-white focus:ring-4 focus:ring-green-700/10"
+                                    >
+
+                                </div>
+
+                            </div>
+
+                            <!-- ADDRESS -->
+
+                            <div class="sm:col-span-2">
+
+                                <label for="residentAddress" class="mb-2 block text-sm font-semibold text-gray-700">
+                                    Purok / Complete Address <span class="text-red-500">*</span>
+                                </label>
+
+                                <div class="relative">
+
+                                    <i class="fa-solid fa-location-dot absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        id="residentAddress"
+                                        name="address"
+                                        type="text"
+                                        required
+                                        placeholder="Enter your purok and complete address"
+                                        class="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-11 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-green-700 focus:bg-white focus:ring-4 focus:ring-green-700/10"
+                                    >
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- ACCOUNT SECURITY -->
+
+                    <div>
+
+                        <div class="mb-5 flex items-center gap-3 border-b border-gray-100 pb-3">
+
+                            <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+
+                            <div>
+
+                                <h3 class="font-bold text-gray-800">
+                                    Account Security
+                                </h3>
+
+                                <p class="text-xs text-gray-400">
+                                    Create a secure password for your account
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+                            <!-- PASSWORD -->
+
+                            <div>
+
+                                <label for="residentPassword" class="mb-2 block text-sm font-semibold text-gray-700">
+                                    Password <span class="text-red-500">*</span>
+                                </label>
+
+                                <div class="relative">
+
+                                    <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        id="residentPassword"
+                                        name="password"
+                                        type="password"
+                                        autocomplete="new-password"
+                                        minlength="8"
+                                        required
+                                        placeholder="Minimum 8 characters"
+                                        class="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-11 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-green-700 focus:bg-white focus:ring-4 focus:ring-green-700/10"
+                                    >
+
+                                </div>
+
+                                <p class="mt-2 text-[11px] text-gray-400">
+                                    <i class="fa-solid fa-circle-info mr-1"></i>
+                                    Use at least 8 characters.
+                                </p>
+
+                            </div>
+
+                            <!-- CONFIRM PASSWORD -->
+
+                            <div>
+
+                                <label for="residentConfirm" class="mb-2 block text-sm font-semibold text-gray-700">
+                                    Confirm Password <span class="text-red-500">*</span>
+                                </label>
+
+                                <div class="relative">
+
+                                    <i class="fa-solid fa-shield-halved absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+
+                                    <input
+                                        id="residentConfirm"
+                                        name="confirm"
+                                        type="password"
+                                        autocomplete="new-password"
+                                        minlength="8"
+                                        required
+                                        placeholder="Re-enter your password"
+                                        class="w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-11 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-green-700 focus:bg-white focus:ring-4 focus:ring-green-700/10"
+                                    >
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- PRIVACY NOTICE -->
+
+                    <div class="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4">
+
+                        <i class="fa-solid fa-circle-info mt-0.5 text-amber-600"></i>
+
+                        <p class="text-xs leading-relaxed text-gray-600">
+                            Your registration information will be used for barangay resident account processing. Your account may require verification by the barangay office.
+                        </p>
+
+                    </div>
+
+
+                    <!-- CREATE ACCOUNT BUTTON -->
+
+                    <div class="space-y-3">
+
+                        <button
+                            type="submit"
+                            name="register"
+                            class="group flex w-full items-center justify-center gap-3 rounded-xl bg-green900 py-4 text-sm font-extrabold tracking-wide text-white shadow-lg shadow-green-900/20 transition hover:-translate-y-0.5 hover:bg-green800 hover:shadow-xl"
+                        >
+
+                            <i class="fa-solid fa-user-plus transition group-hover:scale-110"></i>
+
+                            CREATE ACCOUNT
+
+                            <i class="fa-solid fa-arrow-right text-xs transition group-hover:translate-x-1"></i>
+
+                        </button>
+
+                        <p class="text-center text-xs text-gray-400">
+                            By registering, you agree to provide accurate information.
+                        </p>
+
+                    </div>
+
+                </form>
+
+            </div>
+
+            <!-- MODAL FOOTER -->
+
+            <div class="border-t border-gray-100 bg-gray-50 px-6 py-4 text-center">
+
+                <div class="flex items-center justify-center gap-2 text-xs text-gray-500">
+
+                    <i class="fa-solid fa-landmark text-green900"></i>
+
+                    <span>Official Resident Registration Portal</span>
+
+                </div>
+
+                <p class="mt-1 text-[10px] text-gray-400">
+                    Barangay Guindacpan • Talibon, Bohol
+                </p>
+
+            </div>
 
         </div>
 
     </div>
 
     <!-- CREATE ACCOUNT MODAL CONTROLS -->
- 
 
+   
 </body>
 <script src="barangay.js"></script>
+
 </html>

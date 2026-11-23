@@ -439,7 +439,7 @@ if (empty($_SESSION["bhw_login_csrf"])) {
             </p>
 
             <a
-                href="../index.php"
+                href="../main.php"
                 class="inline-flex items-center gap-2 text-xs text-slate-400 mt-6 hover:text-blue-600"
             >
 
