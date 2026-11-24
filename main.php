@@ -277,7 +277,7 @@
 
                     <div class="flex flex-col sm:flex-row gap-3 mt-8">
                     <a
-    href="administrator/request.php"
+    href="resident/request.php"
     class="bg-gold hover:bg-gold2 text-white px-7 py-3.5 rounded-lg font-bold text-sm text-center shadow-lg transition"
 >
     📋 Request a Document
