@@ -1364,8 +1364,8 @@
                         BHW Portal
                     </a>
 
-                    <a href="administrator/CreatAdmin.php" class="hover:text-gold2 transition">
-                        Administrator
+                    <a href="midwife/CreatAdmin.php" class="hover:text-gold2 transition">
+                      Midwife
                     </a>
 
                 </div>

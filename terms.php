@@ -40,7 +40,7 @@ $lastUpdated = "November 22, 2026";
 
         <a href="main.php" class="flex items-center gap-3">
         <img
-                src="asset/logo.jpg"
+                src="asset/logo.png"
                 alt="Barangay Guindacpan Logo"
                 class="w-11 h-11 object-contain rounded-xl bg-white p-1"
             >
